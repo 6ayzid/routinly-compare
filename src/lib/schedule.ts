@@ -49,20 +49,43 @@ export async function getScheduleWithMeta(
     versionType: 'new',
   }));
 
-  // 2. Previous Routine (Fall 2026 Published V4.1)
-  const rawPrev = (previousRoutine.sections as Record<string, RoutineClass[]>)[normalizedId] || [];
-  const enrichedPrev: RoutineClass[] = rawPrev.map((c) => ({
-    ...c,
-    courseTitle: getCourseName(c.courseCode) || c.courseTitle,
-    teacherName: getFacultyByCode(c.teacherCode)?.name || c.teacherCode,
-    versionType: 'previous',
-  }));
+  // 2. Previous Routine (Fall 2026 Published V4.1): Check project live routine API first
+  let enrichedPrev: RoutineClass[] = [];
+  let prevVersion = previousRoutine.version || 'v4.1';
+
+  try {
+    const liveResult = await fetchLiveScheduleFromUpstream(normalizedId);
+    if (liveResult && Array.isArray(liveResult.classes) && liveResult.classes.length > 0) {
+      enrichedPrev = liveResult.classes.map((c) => ({
+        ...c,
+        courseTitle: getCourseName(c.courseCode.split('(')[0].trim()) || c.courseTitle,
+        teacherName: getFacultyByCode(c.teacherCode)?.name || c.teacherCode,
+        versionType: 'previous' as const,
+      }));
+      if (liveResult.version) {
+        prevVersion = liveResult.version;
+      }
+    }
+  } catch (err) {
+    console.warn(`[Routine Gateway] Live section schedule fetch error for ${normalizedId}:`, err);
+  }
+
+  // Fallback to local previous snapshot if live worker returned 0 or failed
+  if (enrichedPrev.length === 0) {
+    const rawPrev = (previousRoutine.sections as Record<string, RoutineClass[]>)[normalizedId] || [];
+    enrichedPrev = rawPrev.map((c) => ({
+      ...c,
+      courseTitle: getCourseName(c.courseCode) || c.courseTitle,
+      teacherName: getFacultyByCode(c.teacherCode)?.name || c.teacherCode,
+      versionType: 'previous' as const,
+    }));
+  }
 
   return {
     classes: filterBySubSection(enrichedNew, subSection),
     previousClasses: filterBySubSection(enrichedPrev, subSection),
     version: newRoutine.version || 'Routinly (Optimized)',
-    previousVersion: previousRoutine.version || 'Published (v4.1)',
+    previousVersion: prevVersion || 'Published (v4.1)',
   };
 }
 
@@ -147,12 +170,34 @@ export async function getScheduleForFacultyWithMeta(
     }
   }
 
-  // 2. Previous Routine (Fall 2026 Published V4.1)
-  const prevTeacherClasses: RoutineClass[] = [];
-  const prevTeachersMap = (previousRoutine.teachers || {}) as Record<string, RoutineClass[]>;
-  for (const code of allCodes) {
-    if (prevTeachersMap[code]) {
-      prevTeacherClasses.push(...prevTeachersMap[code]);
+  // 2. Previous Routine (Fall 2026 Published V4.1): Check project live routine API first
+  let prevTeacherClasses: RoutineClass[] = [];
+  let prevVersion = previousRoutine.version || 'v4.1';
+
+  try {
+    const liveResult = await fetchLiveTeacherScheduleFromUpstream(cleanCode);
+    if (liveResult !== null && Array.isArray(liveResult.classes) && liveResult.classes.length > 0) {
+      prevTeacherClasses = liveResult.classes.map((c) => ({
+        ...c,
+        courseTitle: getCourseName(c.courseCode.split('(')[0].trim()) || c.courseTitle,
+        teacherName: faculty.name,
+        versionType: 'previous' as const,
+      }));
+      if (liveResult.version) {
+        prevVersion = liveResult.version;
+      }
+    }
+  } catch (err) {
+    console.warn(`[Routine Gateway] Live faculty schedule fetch error for ${cleanCode}:`, err);
+  }
+
+  // Fallback to local previous snapshot if live worker returned 0 or failed
+  if (prevTeacherClasses.length === 0) {
+    const prevTeachersMap = (previousRoutine.teachers || {}) as Record<string, RoutineClass[]>;
+    for (const code of allCodes) {
+      if (prevTeachersMap[code]) {
+        prevTeacherClasses.push(...prevTeachersMap[code]);
+      }
     }
   }
 
@@ -174,7 +219,7 @@ export async function getScheduleForFacultyWithMeta(
     classes: deduplicateAndSortClasses(enrichedNew),
     previousClasses: deduplicateAndSortClasses(enrichedPrev),
     version: newRoutine.version || 'Routinly (Optimized)',
-    previousVersion: previousRoutine.version || 'Published (v4.1)',
+    previousVersion: prevVersion || 'Published (v4.1)',
     faculty,
   };
 }

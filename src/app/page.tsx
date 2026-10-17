@@ -25,6 +25,7 @@ import { ClassEventOverride } from '@/types/events';
 import { WifiOff, RefreshCw } from 'lucide-react';
 
 const SYNCED_VERSION_KEY = 'diu_synced_routine_version';
+const CACHE_PREFIX = 'diu_cached_compare_v4';
 
 function purgeOldVersionCaches(activeVersion: string) {
   if (typeof window === 'undefined') return;
@@ -33,9 +34,9 @@ function purgeOldVersionCaches(activeVersion: string) {
     for (let i = 0; i < localStorage.length; i++) {
       const k = localStorage.key(i);
       if (!k) continue;
-      // Invalidate and remove routine caches from old versions or legacy unversioned caches
-      if (k.startsWith('diu_cached_routine_')) {
-        if (!k.startsWith(`diu_cached_routine_${activeVersion}_`)) {
+      // Invalidate and remove routine caches from legacy single-routine format or old versions
+      if (k.startsWith('diu_cached_routine_') || k.startsWith('diu_cached_compare_')) {
+        if (!k.startsWith(`${CACHE_PREFIX}_${activeVersion}_`)) {
           keysToRemove.push(k);
         }
       }
@@ -364,7 +365,7 @@ export default function Home() {
   useEffect(() => {
     let isCancelled = false;
 
-    fetch('/api/routine/version')
+    fetch('/api/routine_version')
       .then((res) => {
         if (!res.ok) throw new Error('Failed to query upstream version');
         return res.json();
@@ -403,9 +404,9 @@ export default function Home() {
     (target: ActiveRoutineTarget, ver?: string) => {
       const v = ver || routineVersion;
       if (target.type === 'faculty') {
-        return `diu_cached_routine_${v}_t_${target.faculty.code.toUpperCase()}`;
+        return `${CACHE_PREFIX}_${v}_t_${target.faculty.code.toUpperCase()}`;
       }
-      return `diu_cached_routine_${v}_s_${target.section.id}_sub_${target.subSection}`;
+      return `${CACHE_PREFIX}_${v}_s_${target.section.id}_sub_${target.subSection}`;
     },
     [routineVersion]
   );
@@ -467,7 +468,11 @@ export default function Home() {
         const raw = localStorage.getItem(cacheKey);
         if (raw) {
           const parsed = JSON.parse(raw);
-          if (Array.isArray(parsed.classes) && parsed.classes.length > 0) {
+          if (
+            Array.isArray(parsed.classes) &&
+            parsed.classes.length > 0 &&
+            Array.isArray(parsed.previousClasses)
+          ) {
             const hasLegacyCommonSection =
               currentTarget.type === 'faculty' &&
               parsed.classes.some((c: RoutineClass) => c.sectionId === 'Common');
@@ -475,7 +480,7 @@ export default function Home() {
             if (!hasLegacyCommonSection) {
               cachedData = {
                 classes: parsed.classes,
-                previousClasses: parsed.previousClasses || [],
+                previousClasses: parsed.previousClasses,
                 version: parsed.version || currentVersion,
               };
             }
