@@ -2325,13 +2325,9 @@ export function TimetableGrid({
                       // New routine card (Routinly): BLUE
                       // Both are equally emphasized with vibrant colors, solid borders, and full readability!
                       const isNewVersion = c.versionType === 'new' || pe.isPrimaryTarget;
-                      let cardTheme = isNewVersion
+                      const cardTheme = isNewVersion
                         ? 'bg-blue-600 hover:bg-blue-700 text-white dark:bg-blue-600 dark:hover:bg-blue-500 dark:text-white border border-blue-500/50 shadow-xs'
                         : 'bg-emerald-600 hover:bg-emerald-700 text-white dark:bg-emerald-600 dark:hover:bg-emerald-500 dark:text-white border border-emerald-500/50 shadow-xs';
-                      let buttonBadgeClass =
-                        'bg-black/25 hover:bg-black/40 text-white border-white/20 dark:bg-black/25 dark:hover:bg-black/40 dark:text-white dark:border-white/20';
-                      let subsectionBadgeClass =
-                        'bg-black/25 text-white border-white/20 dark:bg-black/25 dark:text-white dark:border-white/20';
 
                       const isLiveNow =
                         isToday &&
