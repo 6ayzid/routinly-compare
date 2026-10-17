@@ -11,7 +11,9 @@ import re
 import json
 import openpyxl
 
-EXCEL_PATH = r"C:\Users\bayzid\Downloads\Telegram Desktop\Routinly_Fall2026_Master_Routine.xlsx"
+REPORTS_EXCEL_PATH = r"C:\Users\bayzid\Documents\routinly-v1.5\reports\Routinly_Fall2026_Master_Routine.xlsx"
+DOWNLOADS_EXCEL_PATH = r"C:\Users\bayzid\Downloads\Telegram Desktop\Routinly_Fall2026_Master_Routine.xlsx"
+EXCEL_PATH = REPORTS_EXCEL_PATH if os.path.exists(REPORTS_EXCEL_PATH) else DOWNLOADS_EXCEL_PATH
 BASE_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 SRC_DATA_DIR = os.path.join(BASE_DIR, "src", "data")
 NEW_ROUTINE_PATH = os.path.join(SRC_DATA_DIR, "new-routine.json")
