@@ -1,5 +1,5 @@
 > [!WARNING]
-> **License Notice**: This project is licensed under the CC BY-NC 4.0 License. Commercial use is strictly prohibited without explicit permission from the author.
+> **License Notice**: This project is licensed under the **CC BY-NC-SA 4.0** (Creative Commons Attribution-NonCommercial-ShareAlike 4.0 International) License. **Commercial use of any kind is strictly prohibited**. Anyone who copies, forks, or modifies this repository **must make their derivative work open source** under the exact same license terms.
 
 <div align="center">
 
@@ -11,7 +11,7 @@
 [![Next.js 16](https://img.shields.io/badge/Next.js-16-black?style=flat&logo=next.js)](https://nextjs.org/)
 [![React 19](https://img.shields.io/badge/React-19-61DAFB?style=flat&logo=react&logoColor=black)](https://react.dev/)
 [![TypeScript](https://img.shields.io/badge/TypeScript-5.0+-3178C6?style=flat&logo=typescript&logoColor=white)](https://www.typescriptlang.org/)
-[![License: CC BY-NC 4.0](https://img.shields.io/badge/License-CC_BY--NC_4.0-lightgrey.svg?style=flat)](https://creativecommons.org/licenses/by-nc/4.0/)
+[![License: CC BY-NC-SA 4.0](https://img.shields.io/badge/License-CC_BY--NC--SA_4.0-lightgrey.svg?style=flat)](https://creativecommons.org/licenses/by-nc-sa/4.0/)
 
 <br />
 
@@ -127,7 +127,7 @@ curl "https://diu-routine-api.6ayzid.workers.dev/api/free-rooms?time=10:00-11:30
 ```
 
 > [!TIP]
-> **Developer Policy**: Free for student projects, non-commercial campus utilities, and personal bots under the CC BY-NC 4.0 License. Edge cached globally with zero rate-limiting on typical usage.
+> **Developer Policy**: Free for student projects, non-commercial campus utilities, and personal bots under the CC BY-NC-SA 4.0 License. Commercial use is strictly prohibited, and any modified or derivative works must be open source under the same license terms. Edge cached globally with zero rate-limiting on typical usage.
 
 
 ---
@@ -180,4 +180,10 @@ Academic class routines, room allocations, and schedule timetables are fundament
 
 ## License
 
-Licensed under the [Creative Commons Attribution-NonCommercial 4.0 International (CC BY-NC 4.0)](https://creativecommons.org/licenses/by-nc/4.0/) License. Commercial use is strictly prohibited without explicit permission from the author. See [`LICENSE`](LICENSE) for details.
+Licensed under the [Creative Commons Attribution-NonCommercial-ShareAlike 4.0 International (CC BY-NC-SA 4.0)](https://creativecommons.org/licenses/by-nc-sa/4.0/) License.
+
+- 🚫 **Commercial use is strictly prohibited in any way or form.**
+- 🔄 **Copyleft / ShareAlike**: Anyone who copies, forks, or builds upon this repository **must make their derivative work open source** under the exact same license terms.
+- 👤 Attribution must be retained to the original author.
+
+See [`LICENSE`](LICENSE) for full legal text.
