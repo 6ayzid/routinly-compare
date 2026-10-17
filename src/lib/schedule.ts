@@ -4,7 +4,8 @@ import { CURATED_ROUTINES } from '@/data/routines';
 import { fetchLiveScheduleFromUpstream, fetchLiveTeacherScheduleFromUpstream } from './routine-gateway';
 import { getFacultyByCode } from '@/data/faculty';
 import { getCourseName } from '@/lib/courses';
-import officialRoutine from '@/data/official-routine.json';
+import newRoutine from '@/data/new-routine.json';
+import previousRoutine from '@/data/previous-routine.json';
 
 /**
  * Retrieves all registered university sections (170+ sections across Batches 63-73)
@@ -21,17 +22,9 @@ export function getSection(id: string): SectionMeta | undefined {
 }
 
 /**
- * Retrieves schedule entries for a section with subsection filtering.
- * 
- * Data resolution order:
- * 1. Official Departmental Routine (Parsed from official Fall 2026 V1.1 PDF)
- * 2. Optional: Live gateway or Google Sheets CSV export
- * 3. Fallback: Curated internal routine engine
- * 
- * Domain Rule:
- * Section D has subsections D1 and D2:
- * - Theory classes are common (subSection is null)
- * - Labs are subgroup-specific (subSection is '1' or '2')
+ * Retrieves schedule entries for a section with subsection filtering for both:
+ * 1. New Routine (Fall 2026 Routinly Optimized)
+ * 2. Previous Routine (Fall 2026 Published V4.1)
  * 
  * @param sectionId e.g. "68_D"
  * @param subSection '1' | '2' | 'all' | null
@@ -39,71 +32,37 @@ export function getSection(id: string): SectionMeta | undefined {
 export async function getScheduleWithMeta(
   sectionId: string,
   subSection?: '1' | '2' | 'all' | null
-): Promise<{ classes: RoutineClass[]; version: string }> {
+): Promise<{
+  classes: RoutineClass[];
+  previousClasses: RoutineClass[];
+  version: string;
+  previousVersion: string;
+}> {
   const normalizedId = sectionId.replace('-', '_').toUpperCase();
 
-  // 1. Primary: Departmental routine gateway (live Cloudflare Worker with edge caching)
-  try {
-    const liveResult = await fetchLiveScheduleFromUpstream(normalizedId);
-    if (liveResult && liveResult.classes.length > 0) {
-      const enriched = liveResult.classes.map((c) => {
-        const cleanC = c.courseCode.split('(')[0].trim().toUpperCase();
-        const rawT = (c.courseTitle || '').trim();
-        const cleanT = rawT.replace(/\s*lab\s*/i, '').replace(/[^A-Za-z0-9]/g, '').toUpperCase();
-        const isJustCode = !rawT || rawT.toLowerCase() === 'unknown' || cleanT === cleanC.replace(/[^A-Za-z0-9]/g, '');
-        return {
-          ...c,
-          courseTitle: isJustCode ? (getCourseName(cleanC) || c.courseTitle) : c.courseTitle,
-        };
-      });
-      return {
-        classes: filterBySubSection(enriched, subSection),
-        version: liveResult.version || officialRoutine.version || '4.1',
-      };
-    }
-  } catch (err) {
-    console.warn(`Upstream fetch fallback for ${normalizedId}:`, err);
-  }
+  // 1. New Routine (Routinly Optimized)
+  const rawNew = (newRoutine.sections as Record<string, RoutineClass[]>)[normalizedId] || [];
+  const enrichedNew: RoutineClass[] = rawNew.map((c) => ({
+    ...c,
+    courseTitle: getCourseName(c.courseCode) || c.courseTitle,
+    teacherName: getFacultyByCode(c.teacherCode)?.name || c.teacherCode,
+    versionType: 'new',
+  }));
 
-  // 2. Fallback: Official Departmental Routine snapshot
-  const officialClasses = (officialRoutine.sections as Record<string, RoutineClass[]>)[normalizedId];
-  if (officialClasses && officialClasses.length > 0) {
-    const enriched = officialClasses.map((c) => ({
-      ...c,
-      courseTitle: getCourseName(c.courseCode),
-      teacherName: getFacultyByCode(c.teacherCode)?.name || c.teacherCode,
-    }));
-    return {
-      classes: filterBySubSection(enriched, subSection),
-      version: officialRoutine.version || '4.1',
-    };
-  }
+  // 2. Previous Routine (Fall 2026 Published V4.1)
+  const rawPrev = (previousRoutine.sections as Record<string, RoutineClass[]>)[normalizedId] || [];
+  const enrichedPrev: RoutineClass[] = rawPrev.map((c) => ({
+    ...c,
+    courseTitle: getCourseName(c.courseCode) || c.courseTitle,
+    teacherName: getFacultyByCode(c.teacherCode)?.name || c.teacherCode,
+    versionType: 'previous',
+  }));
 
-  // 2. If connected to external Google Sheets CSV, fetch and parse:
-  if (process.env.GOOGLE_SHEETS_CSV_URL) {
-    try {
-      const sheetData = await fetchScheduleFromGoogleSheet(
-        process.env.GOOGLE_SHEETS_CSV_URL,
-        normalizedId
-      );
-      if (sheetData.length > 0) {
-        return {
-          classes: filterBySubSection(sheetData, subSection),
-          version: '2.2',
-        };
-      }
-    } catch (err) {
-      console.warn('Fallback to local database after Google Sheets fetch error:', err);
-    }
-  }
-
-  // 3. Fallback to curated dataset only (do not generate fake/synthetic mock classes)
-  const curated = CURATED_ROUTINES.filter(
-    (c) => c.sectionId.toUpperCase() === normalizedId
-  );
   return {
-    classes: filterBySubSection(curated, subSection),
-    version: '2.2',
+    classes: filterBySubSection(enrichedNew, subSection),
+    previousClasses: filterBySubSection(enrichedPrev, subSection),
+    version: newRoutine.version || 'Routinly (Optimized)',
+    previousVersion: previousRoutine.version || 'Published (v4.1)',
   };
 }
 
@@ -160,7 +119,13 @@ function deduplicateAndSortClasses(classes: RoutineClass[]): RoutineClass[] {
  */
 export async function getScheduleForFacultyWithMeta(
   teacherCode: string
-): Promise<{ classes: RoutineClass[]; version: string; faculty: FacultyMeta }> {
+): Promise<{
+  classes: RoutineClass[];
+  previousClasses: RoutineClass[];
+  version: string;
+  previousVersion: string;
+  faculty: FacultyMeta;
+}> {
   const cleanCode = teacherCode.trim().toUpperCase();
   const faculty = getFacultyByCode(cleanCode) || {
     code: cleanCode,
@@ -168,71 +133,48 @@ export async function getScheduleForFacultyWithMeta(
     department: 'CSE',
   };
 
-  // 1. Primary: Departmental routine gateway (live Cloudflare Worker with edge caching)
-  try {
-    const liveResult = await fetchLiveTeacherScheduleFromUpstream(cleanCode);
-    if (liveResult !== null && liveResult.classes.length > 0) {
-      const refreshedFaculty = getFacultyByCode(cleanCode) || faculty;
-      const enriched = liveResult.classes.map((c) => {
-        const cleanC = c.courseCode.split('(')[0].trim().toUpperCase();
-        const rawT = (c.courseTitle || '').trim();
-        const cleanT = rawT.replace(/\s*lab\s*/i, '').replace(/[^A-Za-z0-9]/g, '').toUpperCase();
-        const isJustCode = !rawT || rawT.toLowerCase() === 'unknown' || cleanT === cleanC.replace(/[^A-Za-z0-9]/g, '');
-        return {
-          ...c,
-          courseTitle: isJustCode ? (getCourseName(cleanC) || c.courseTitle) : c.courseTitle,
-        };
-      });
-      return {
-        classes: deduplicateAndSortClasses(enriched),
-        version: liveResult.version || officialRoutine.version || '4.1',
-        faculty: refreshedFaculty,
-      };
-    }
-  } catch (err) {
-    console.warn(`Upstream faculty routine fetch fallback for ${cleanCode}:`, err);
-  }
-
-  // 2. Fallback: Official Departmental Routine snapshot
   const allCodes = new Set<string>([
     cleanCode,
     ...(faculty.aliases || []).map((a) => a.toUpperCase()),
   ]);
 
-  const teacherClasses: RoutineClass[] = [];
-  const teachersMap = officialRoutine.teachers as Record<string, RoutineClass[]>;
-
+  // 1. New Routine (Routinly Optimized)
+  const newTeacherClasses: RoutineClass[] = [];
+  const newTeachersMap = (newRoutine.teachers || {}) as Record<string, RoutineClass[]>;
   for (const code of allCodes) {
-    if (teachersMap[code]) {
-      teacherClasses.push(...teachersMap[code]);
+    if (newTeachersMap[code]) {
+      newTeacherClasses.push(...newTeachersMap[code]);
     }
   }
 
-  if (teacherClasses.length > 0) {
-    const enriched = teacherClasses.map((c) => ({
-      ...c,
-      courseTitle: getCourseName(c.courseCode),
-      teacherName: faculty.name,
-    }));
-    return {
-      classes: deduplicateAndSortClasses(enriched),
-      version: officialRoutine.version || '4.1',
-      faculty,
-    };
-  }
-
-  // 3. Fallback to local curated routines only if upstream was unreachable
-  const aggregatedClasses: RoutineClass[] = [];
-
-  for (const c of CURATED_ROUTINES) {
-    if (allCodes.has(c.teacherCode.toUpperCase())) {
-      aggregatedClasses.push({ ...c, teacherName: faculty.name });
+  // 2. Previous Routine (Fall 2026 Published V4.1)
+  const prevTeacherClasses: RoutineClass[] = [];
+  const prevTeachersMap = (previousRoutine.teachers || {}) as Record<string, RoutineClass[]>;
+  for (const code of allCodes) {
+    if (prevTeachersMap[code]) {
+      prevTeacherClasses.push(...prevTeachersMap[code]);
     }
   }
+
+  const enrichedNew = newTeacherClasses.map((c) => ({
+    ...c,
+    courseTitle: getCourseName(c.courseCode) || c.courseTitle,
+    teacherName: faculty.name,
+    versionType: 'new' as const,
+  }));
+
+  const enrichedPrev = prevTeacherClasses.map((c) => ({
+    ...c,
+    courseTitle: getCourseName(c.courseCode) || c.courseTitle,
+    teacherName: faculty.name,
+    versionType: 'previous' as const,
+  }));
 
   return {
-    classes: deduplicateAndSortClasses(aggregatedClasses),
-    version: 'v2.2',
+    classes: deduplicateAndSortClasses(enrichedNew),
+    previousClasses: deduplicateAndSortClasses(enrichedPrev),
+    version: newRoutine.version || 'Routinly (Optimized)',
+    previousVersion: previousRoutine.version || 'Published (v4.1)',
     faculty,
   };
 }

@@ -24,6 +24,7 @@ export interface RoutineClass {
   endTime: string;        // e.g. "10:00"
   type: ClassType;
   color?: string;         // optional UI accent
+  versionType?: 'previous' | 'new';
 }
 
 export interface SectionMeta {
@@ -81,3 +82,4 @@ export interface FreeTimeSlot {
   formattedRange: string;
 }
 
+export type VersionViewMode = 'both' | 'new' | 'previous';

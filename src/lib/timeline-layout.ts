@@ -93,10 +93,15 @@ export function layoutDayEvents(classes: RoutineClass[]): PositionedEvent[] {
     };
   });
 
-  // Sort by start time ascending, then by duration descending
+  // Sort by start time ascending, then by duration descending, then previous before new
   baseEvents.sort((a, b) => {
     if (a.startMinutes !== b.startMinutes) return a.startMinutes - b.startMinutes;
-    return (b.endMinutes - b.startMinutes) - (a.endMinutes - a.startMinutes);
+    const durA = a.endMinutes - a.startMinutes;
+    const durB = b.endMinutes - b.startMinutes;
+    if (durA !== durB) return durB - durA;
+    if (a.event.versionType === 'previous' && b.event.versionType === 'new') return -1;
+    if (a.event.versionType === 'new' && b.event.versionType === 'previous') return 1;
+    return 0;
   });
 
   // 2. Group into overlapping clusters (interval partitioning)

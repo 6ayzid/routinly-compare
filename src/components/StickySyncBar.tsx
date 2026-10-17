@@ -1,7 +1,8 @@
 'use client';
 
 import React from 'react';
-import { Calendar, DoorOpen, Search, Plus } from 'lucide-react';
+import Link from 'next/link';
+import { DoorOpen, Search, BookOpen } from 'lucide-react';
 import { SectionMeta, ActiveRoutineTarget, CompareState } from '@/types/schedule';
 
 interface StickySyncBarProps {
@@ -12,7 +13,6 @@ interface StickySyncBarProps {
   hasSavedPreference?: boolean;
   onOpenSectionPicker: () => void;
   onOpenComparePicker?: () => void;
-  onOpenSyncModal: () => void;
   onOpenRoomFinder?: () => void;
 }
 
@@ -24,7 +24,6 @@ export function StickySyncBar({
   hasSavedPreference = true,
   onOpenSectionPicker,
   onOpenComparePicker,
-  onOpenSyncModal,
   onOpenRoomFinder,
 }: StickySyncBarProps) {
   const isFaculty = activeTarget?.type === 'faculty';
@@ -101,36 +100,15 @@ export function StickySyncBar({
             </button>
           )}
 
-          {/* Routine Compare Button */}
-          {hasSavedPreference && onOpenComparePicker && (
-            <button
-              type="button"
-              onClick={onOpenComparePicker}
-              aria-label={isComparing ? 'Routine compare active' : 'Compare routine with another section or teacher'}
-              title={isComparing ? 'Routine compare active (tap to change)' : 'Compare routines'}
-              className={`relative flex items-center justify-center h-[38px] w-[38px] rounded-xl border transition-colors cursor-pointer ${
-                isComparing
-                  ? 'border-emerald-400/80 bg-emerald-50 text-emerald-800 dark:border-emerald-600/70 dark:bg-emerald-950/70 dark:text-emerald-300 shadow-2xs'
-                  : 'border-slate-200 bg-slate-100/80 text-slate-600 hover:text-emerald-700 dark:border-slate-800 dark:bg-slate-900 dark:text-slate-300 dark:hover:text-emerald-400'
-              }`}
-            >
-              <Plus className="h-4 w-4" />
-              {isComparing && (
-                <span className="absolute -top-0.5 -right-0.5 h-2 w-2 rounded-full bg-emerald-500 ring-2 ring-white dark:ring-slate-950 animate-pulse" />
-              )}
-            </button>
-          )}
-
-          {/* Primary 1-Tap Calendar Subscription Button */}
-          <button
-            type="button"
-            onClick={hasSavedPreference ? onOpenSyncModal : onOpenSectionPicker}
-            aria-label={hasSavedPreference ? 'Open Calendar Sync Modal' : 'Select section to sync calendar'}
-            className="flex items-center gap-1.5 h-[38px] rounded-xl bg-emerald-600 hover:bg-emerald-500 active:bg-emerald-700 px-3 py-1.5 text-xs font-bold text-white dark:bg-emerald-500 dark:hover:bg-emerald-400 dark:text-emerald-950 transition-colors cursor-pointer shadow-sm border border-emerald-500/30"
+          {/* Optimization Report & Benchmark Link */}
+          <Link
+            href="/docs"
+            aria-label="View Routinly Optimization Report and Benchmarks"
+            className="flex items-center gap-1.5 h-[38px] rounded-xl bg-slate-900 hover:bg-slate-800 text-white dark:bg-white dark:text-slate-950 dark:hover:bg-slate-100 px-3 py-1.5 text-xs font-bold transition-colors cursor-pointer shadow-xs shrink-0"
           >
-            <Calendar className="h-3.5 w-3.5" />
-            <span>Sync</span>
-          </button>
+            <BookOpen className="h-3.5 w-3.5 text-blue-400 dark:text-blue-600" />
+            <span>Report</span>
+          </Link>
         </div>
       </div>
     </aside>

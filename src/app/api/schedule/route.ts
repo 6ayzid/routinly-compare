@@ -13,7 +13,7 @@ export async function GET(request: NextRequest) {
   // Check if teacher schedule requested
   const teacher = url.searchParams.get('teacher') || url.searchParams.get('t');
   if (teacher) {
-    const { classes, version, faculty } = await getScheduleForFacultyWithMeta(teacher);
+    const { classes, previousClasses, version, previousVersion, faculty } = await getScheduleForFacultyWithMeta(teacher);
     const formattedVersion = formatShortVersion(version);
 
     return NextResponse.json(
@@ -22,7 +22,9 @@ export async function GET(request: NextRequest) {
         mode: 'faculty',
         faculty,
         classes,
+        previousClasses,
         version: formattedVersion,
+        previousVersion,
       },
       {
         headers: {
@@ -43,7 +45,7 @@ export async function GET(request: NextRequest) {
     );
   }
 
-  const { classes, version } = await getScheduleWithMeta(sectionId, subSection);
+  const { classes, previousClasses, version, previousVersion } = await getScheduleWithMeta(sectionId, subSection);
   const formattedVersion = formatShortVersion(version);
 
   return NextResponse.json(
@@ -52,7 +54,9 @@ export async function GET(request: NextRequest) {
       mode: 'student',
       section: sectionMeta,
       classes,
+      previousClasses,
       version: formattedVersion,
+      previousVersion,
     },
     {
       headers: {
