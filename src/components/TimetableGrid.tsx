@@ -8,8 +8,6 @@ import {
   Clock,
   MapPin,
   FlaskConical,
-  LayoutGrid,
-  CalendarDays,
   Info,
   ChevronLeft,
   ChevronRight,
@@ -131,9 +129,9 @@ export function TimetableGrid({
     }
   }, [onVersionViewChange]);
 
-  // Default to agenda on mobile screens (< 768px), matrix (week view) on desktop unless ?view=agenda is passed in URL
+  // Matrix (week view) is the standard timetable view
   const [internalViewMode, setInternalViewMode] = useState<'matrix' | 'agenda'>('matrix');
-  const effectiveViewMode = viewMode !== undefined ? viewMode : internalViewMode;
+  const effectiveViewMode: 'matrix' | 'agenda' = (viewMode || 'matrix');
   const setEffectiveViewMode = onViewModeChange || setInternalViewMode;
 
   const cleanVersion = (() => {
@@ -146,10 +144,10 @@ export function TimetableGrid({
       if (typeof window !== 'undefined') {
         const params = new URLSearchParams(window.location.search);
         const v = params.get('view') || params.get('v');
-        if (v === 'agenda' || v === 'matrix') {
-          setInternalViewMode(v);
+        if (v === 'agenda') {
+          setInternalViewMode('agenda');
         } else {
-          setInternalViewMode(window.innerWidth < 768 ? 'agenda' : 'matrix');
+          setInternalViewMode('matrix');
         }
       }
     }, 0);
@@ -1821,36 +1819,7 @@ export function TimetableGrid({
             </button>
           </div>
 
-          {/* View switcher */}
-          <div className="inline-flex items-center gap-0.5 rounded-xl border border-slate-200 bg-slate-100/90 dark:border-slate-800 dark:bg-slate-950 p-0.5 shadow-2xs">
-            <button
-              type="button"
-              onClick={() => setEffectiveViewMode('matrix')}
-              aria-pressed={effectiveViewMode === 'matrix'}
-              className={`flex items-center justify-center gap-1.5 rounded-lg px-2.5 py-1 text-xs font-semibold transition-colors cursor-pointer min-h-[30px] ${
-                effectiveViewMode === 'matrix'
-                  ? 'bg-white text-slate-900 shadow-xs border border-slate-200/80 dark:bg-slate-800 dark:text-white dark:border-slate-700 font-bold'
-                  : 'text-slate-600 hover:text-slate-900 dark:text-slate-400 dark:hover:text-white'
-              }`}
-            >
-              <LayoutGrid className="h-3.5 w-3.5 text-emerald-600 dark:text-emerald-400" />
-              <span>Week</span>
-            </button>
 
-            <button
-              type="button"
-              onClick={() => setEffectiveViewMode('agenda')}
-              aria-pressed={effectiveViewMode === 'agenda'}
-              className={`flex items-center justify-center gap-1.5 rounded-lg px-2.5 py-1 text-xs font-semibold transition-colors cursor-pointer min-h-[30px] ${
-                effectiveViewMode === 'agenda'
-                  ? 'bg-white text-slate-900 shadow-xs border border-slate-200/80 dark:bg-slate-800 dark:text-white dark:border-slate-700 font-bold'
-                  : 'text-slate-600 hover:text-slate-900 dark:text-slate-400 dark:hover:text-white'
-              }`}
-            >
-              <CalendarDays className="h-3.5 w-3.5 text-emerald-600 dark:text-emerald-400" />
-              <span>Agenda</span>
-            </button>
-          </div>
         </div>
       </div>
 
@@ -2205,17 +2174,17 @@ export function TimetableGrid({
                                       {shortTitle}
                                     </div>
                                   </div>
-                                  <div className="mt-auto pt-0.5 border-t border-sky-200/60 dark:border-sky-800/60 flex items-center justify-between gap-1 leading-none text-sky-800 dark:text-sky-300 min-w-0 relative z-10">
+                                  <div className="mt-auto pt-0.5 border-t border-white/20 flex items-center justify-between gap-1 leading-none text-white min-w-0 relative z-10">
                                     {(() => {
                                       const { prefix: roomPrefix, number: roomNumber } = parseRoomParts(ev.room);
                                       return (
-                                        <div className="flex flex-wrap items-baseline gap-x-1 font-ui leading-none min-w-0">
+                                        <div className="flex flex-wrap items-baseline gap-x-1 font-ui leading-none min-w-0 text-white">
                                           {roomPrefix && (
-                                            <span className="text-[9px] sm:text-[9.5px] font-normal opacity-70 tracking-tight shrink-0 select-none">
+                                            <span className="text-[9.5px] sm:text-[10px] font-bold text-white tracking-tight shrink-0 select-none">
                                               {roomPrefix}
                                             </span>
                                           )}
-                                          <span className="text-[10px] sm:text-[10.5px] font-normal tracking-tight whitespace-nowrap">
+                                          <span className="text-[10.5px] sm:text-[11px] font-bold text-white tracking-tight whitespace-nowrap">
                                             {roomNumber}
                                           </span>
                                         </div>
@@ -2355,24 +2324,24 @@ export function TimetableGrid({
                                     <span>{getCourseShortTitle(cleanCode, c.courseTitle, c.type === 'Lab')}</span>
                                   </div>
                                 </div>
-                                <div className="mt-auto pt-0.5 border-t border-black/10 dark:border-white/10 flex items-center justify-between gap-1 leading-none opacity-90 relative z-10 min-w-0">
+                                <div className="mt-auto pt-0.5 border-t border-white/20 flex items-center justify-between gap-1 leading-none relative z-10 min-w-0 text-white">
                                   {(() => {
                                     const { prefix: roomPrefix, number: roomNumber } = parseRoomParts(c.room);
                                     return (
-                                      <div className="flex flex-wrap items-baseline gap-x-1 font-ui leading-none min-w-0">
+                                      <div className="flex flex-wrap items-baseline gap-x-1 font-ui leading-none min-w-0 text-white">
                                         {roomPrefix && (
-                                          <span className="text-[9px] sm:text-[9.5px] font-normal opacity-70 tracking-tight shrink-0 select-none">
+                                          <span className="text-[9.5px] sm:text-[10px] font-bold text-white tracking-tight shrink-0 select-none">
                                             {roomPrefix}
                                           </span>
                                         )}
-                                        <span className="text-[10px] sm:text-[10.5px] font-normal tracking-tight whitespace-nowrap">
+                                        <span className="text-[10.5px] sm:text-[11px] font-bold text-white tracking-tight whitespace-nowrap">
                                           {roomNumber}
                                         </span>
                                       </div>
                                     );
                                   })()}
                                   {c.teacherCode && (
-                                    <span className="hidden sm:inline-block font-mono font-normal opacity-75 shrink-0 text-[9px]">{c.teacherCode}</span>
+                                    <span className="hidden sm:inline-block font-mono font-semibold text-white shrink-0 text-[9px]">{c.teacherCode}</span>
                                   )}
                                 </div>
                               </>
@@ -2522,17 +2491,17 @@ export function TimetableGrid({
                                 </div>
 
                                 {/* Bottom Row: Room Number & Teacher Button */}
-                                <div className="mt-auto pt-0.5 border-t border-black/15 dark:border-white/15 flex items-center justify-between gap-1 leading-none min-w-0 relative z-10">
+                                <div className="mt-auto pt-0.5 border-t border-white/20 flex items-center justify-between gap-1 leading-none min-w-0 relative z-10 text-white">
                                   {(() => {
                                     const { prefix: roomPrefix, number: roomNumber } = parseRoomParts(ev.room || c.room);
                                     return (
-                                      <div className="flex flex-wrap items-baseline gap-x-1 font-ui leading-none min-w-0">
+                                      <div className="flex flex-wrap items-baseline gap-x-1 font-ui leading-none min-w-0 text-white">
                                         {roomPrefix && (
-                                          <span className="text-[9px] sm:text-[9.5px] font-normal opacity-70 tracking-tight shrink-0 select-none">
+                                          <span className="text-[9.5px] sm:text-[10px] font-bold text-white tracking-tight shrink-0 select-none">
                                             {roomPrefix}
                                           </span>
                                         )}
-                                        <span className="text-[10px] sm:text-[10.5px] font-normal tracking-tight whitespace-nowrap">
+                                        <span className="text-[10.5px] sm:text-[11px] font-bold text-white tracking-tight whitespace-nowrap">
                                           {roomNumber}
                                         </span>
                                       </div>
@@ -2779,24 +2748,18 @@ export function TimetableGrid({
                                 </div>
 
                                 {/* Bottom Row: Room Number (Horizontal KT- and number, thinner font) & Teacher Button */}
-                                <div className={`mt-auto pt-0.5 border-t flex items-center justify-between gap-1 leading-none min-w-0 relative z-10 ${
-                                  isComparing
-                                    ? pe.isPrimaryTarget
-                                      ? 'border-slate-300/70 dark:border-slate-700/70 text-slate-700 dark:text-slate-300'
-                                      : 'border-emerald-300/70 dark:border-emerald-800/70 text-emerald-900 dark:text-emerald-300'
-                                    : 'border-white/15 dark:border-white/15 text-white'
-                                }`}>
-                                  {/* Room Number - Separated horizontally with thinner font to fit cleanly */}
+                                <div className="mt-auto pt-0.5 border-t border-white/20 flex items-center justify-between gap-1 leading-none min-w-0 relative z-10 text-white">
+                                  {/* Room Number - High contrast bold white text */}
                                   {(() => {
                                     const { prefix: roomPrefix, number: roomNumber } = parseRoomParts(c.room);
                                     return (
-                                      <div className="flex flex-wrap items-baseline gap-x-1 font-ui leading-none min-w-0">
+                                      <div className="flex flex-wrap items-baseline gap-x-1 font-ui leading-none min-w-0 text-white">
                                         {roomPrefix && (
-                                          <span className="text-[9px] sm:text-[9.5px] font-normal opacity-70 tracking-tight shrink-0 select-none">
+                                          <span className="text-[9.5px] sm:text-[10px] font-bold text-white tracking-tight shrink-0 select-none">
                                             {roomPrefix}
                                           </span>
                                         )}
-                                        <span className="text-[10px] sm:text-[10.5px] font-normal tracking-tight whitespace-nowrap">
+                                        <span className="text-[10.5px] sm:text-[11px] font-bold text-white tracking-tight whitespace-nowrap">
                                           {roomNumber}
                                         </span>
                                       </div>
@@ -3244,13 +3207,13 @@ export function TimetableGrid({
                                       </span>
                                     </div>
                                     <span className="opacity-40">•</span>
-                                    <div className="flex items-center gap-1 shrink-0 opacity-90">
-                                      <MapPin className="h-3 w-3 opacity-75" />
+                                    <div className="flex items-center gap-1 shrink-0 text-white font-medium">
+                                      <MapPin className="h-3 w-3 opacity-90 text-white" />
                                       {(() => {
                                         const { prefix: roomPrefix, number: roomNumber } = parseRoomParts(classItem.room);
                                         return (
-                                          <span className="font-ui font-normal">
-                                            {roomPrefix && <span className="opacity-75">{roomPrefix} </span>}
+                                          <span className="font-ui font-semibold text-white">
+                                            {roomPrefix && <span className="opacity-90">{roomPrefix} </span>}
                                             <span>{roomNumber}</span>
                                           </span>
                                         );
