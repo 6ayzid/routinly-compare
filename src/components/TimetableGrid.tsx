@@ -1124,13 +1124,7 @@ export function TimetableGrid({
         return;
       }
 
-      if (e.key === 'w' || e.key === 'W') {
-        e.preventDefault();
-        setEffectiveViewMode('matrix');
-      } else if (e.key === 'a' || e.key === 'A') {
-        e.preventDefault();
-        setEffectiveViewMode('agenda');
-      } else if (effectiveViewMode === 'matrix' && (e.key === 'ArrowDown' || e.key === 'j' || e.key === 'J' || e.key === 'PageDown' || e.key === 'ArrowRight')) {
+      if (effectiveViewMode === 'matrix' && (e.key === 'ArrowDown' || e.key === 'j' || e.key === 'J' || e.key === 'PageDown' || e.key === 'ArrowRight')) {
         e.preventDefault();
         handleNext();
       } else if (effectiveViewMode === 'matrix' && (e.key === 'ArrowUp' || e.key === 'k' || e.key === 'K' || e.key === 'PageUp' || e.key === 'ArrowLeft')) {
@@ -1139,42 +1133,27 @@ export function TimetableGrid({
       } else if (effectiveViewMode === 'matrix' && (e.key === 't' || e.key === 'T')) {
         e.preventDefault();
         scrollToToday(true);
+      } else if (e.key === 'p' || e.key === 'P' || e.key === '1') {
+        e.preventDefault();
+        handleSetVersionView('previous');
+      } else if (e.key === 'b' || e.key === 'B' || e.key === '2') {
+        e.preventDefault();
+        handleSetVersionView('both');
+      } else if (e.key === 'n' || e.key === 'N' || e.key === '3') {
+        e.preventDefault();
+        handleSetVersionView('new');
       }
     };
 
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [effectiveViewMode, setEffectiveViewMode, handleNext, handlePrev, scrollToToday]);
+  }, [effectiveViewMode, handleNext, handlePrev, scrollToToday, handleSetVersionView]);
 
-
-
-  const isComparing = !!compareState?.active;
-  const isSecondaryPriority = compareState?.priority === 'secondary';
-  const isBlockVisible = compareState?.secondaryVisibility === 'block';
-
-  const highTarget = isComparing
-    ? (isSecondaryPriority ? compareState.secondaryTarget : compareState.primaryTarget)
-    : activeTarget;
-  const highBadge = highTarget ? getTargetLabel(highTarget).badge : (section?.id || 'Class');
-
-  const lowTarget = isComparing
-    ? (isSecondaryPriority ? compareState.primaryTarget : compareState.secondaryTarget)
-    : null;
-  const lowBadge = lowTarget ? getTargetLabel(lowTarget).badge : '';
+  const isComparing = activeVersionView === 'both';
 
   // Memoize positioned events and off-grid overrides for each continuous day
   // Any standalone event that fits within the timeline (8 AM - 6 PM) follows the grid!
   const continuousDayEventsMap = useMemo(() => {
-    const highClasses = isComparing
-      ? (isSecondaryPriority ? (secondaryClasses || []) : classes)
-      : classes;
-
-    const lowClasses = isComparing && isBlockVisible
-      ? (isSecondaryPriority ? classes : (secondaryClasses || []))
-      : [];
-
-    const primaryIdSet = new Set((classes || []).map((c) => c.id));
-
     const map: Record<
       number,
       {
@@ -1190,8 +1169,30 @@ export function TimetableGrid({
       }
 
       const isExamPeriod = isMidtermExamPeriod(d.isoDate);
-      const highDay = isExamPeriod ? [] : highClasses.filter((c) => c.dayOfWeek === d.dayKey);
-      const lowDay = isExamPeriod ? [] : lowClasses.filter((c) => c.dayOfWeek === d.dayKey);
+
+      // 1. Previous routine classes (Green)
+      const prevClasses: RoutineClass[] = isExamPeriod
+        ? []
+        : (secondaryClasses || [])
+            .filter((c) => c.dayOfWeek === d.dayKey)
+            .map((c) => ({ ...c, versionType: 'previous' as const }));
+
+      // 2. New routine classes (Blue)
+      const newClasses: RoutineClass[] = isExamPeriod
+        ? []
+        : (classes || [])
+            .filter((c) => c.dayOfWeek === d.dayKey)
+            .map((c) => ({ ...c, versionType: 'new' as const }));
+
+      // Filter classes based on selected version view: 'both' | 'new' | 'previous'
+      let activeRoutineClasses: RoutineClass[] = [];
+      if (activeVersionView === 'both') {
+        activeRoutineClasses = [...prevClasses, ...newClasses];
+      } else if (activeVersionView === 'new') {
+        activeRoutineClasses = newClasses;
+      } else {
+        activeRoutineClasses = prevClasses;
+      }
 
       // Filter active overrides for this specific date
       const activeDayOverrides = (eventOverrides || []).filter((ev) => {
@@ -1217,7 +1218,7 @@ export function TimetableGrid({
       // An override matches a regular class slot if it shares course code and start time
       const isMatchingRegularClass = (ev: ClassEventOverride) => {
         const evClean = (ev.courseCode || '').split('(')[0].trim().toUpperCase();
-        return [...highDay, ...lowDay].some((c) => {
+        return activeRoutineClasses.some((c) => {
           const cClean = c.courseCode.split('(')[0].trim().toUpperCase();
           if (cClean !== evClean) return false;
           if (ev.startTime && c.startTime && ev.startTime !== c.startTime) return false;
@@ -1280,29 +1281,27 @@ export function TimetableGrid({
       });
 
       const combined = [
-        ...highDay,
+        ...activeRoutineClasses,
         ...syntheticHighClasses.map((s) => s.routineClass),
-        ...lowDay,
       ];
 
       const positioned = layoutDayEvents(combined);
 
       const overrideMap = new Map(syntheticHighClasses.map((s) => [s.routineClass.id, s.override]));
-      const highIdSet = new Set([
-        ...highDay.map((c) => c.id),
-        ...syntheticHighClasses.map((s) => s.routineClass.id),
-      ]);
 
       const positionedEvents: AugmentedPositionedEvent[] = positioned.map((pe) => {
         const override = overrideMap.get(pe.event.id);
-        const isHigh = !isComparing || highIdSet.has(pe.event.id);
-        const isPrimary = primaryIdSet.has(pe.event.id) || !!override;
+        const isNew = pe.event.versionType === 'new' || !!override;
         return {
           ...pe,
-          isHighPriority: isHigh,
-          isBlockMode: isComparing && !isHigh,
-          targetBadge: isHigh ? highBadge : lowBadge,
-          isPrimaryTarget: isPrimary,
+          isHighPriority: true,
+          isBlockMode: false,
+          targetBadge: override
+            ? (pe.event.type === 'Lab' ? 'Lab' : 'Exam')
+            : isNew
+            ? 'New (Routinly)'
+            : 'Prev (v4.1)',
+          isPrimaryTarget: isNew,
           override,
         };
       });
@@ -1315,12 +1314,8 @@ export function TimetableGrid({
     continuousDays,
     classes,
     secondaryClasses,
+    activeVersionView,
     eventOverrides,
-    isComparing,
-    isSecondaryPriority,
-    isBlockVisible,
-    highBadge,
-    lowBadge,
     subSection,
     section,
   ]);
@@ -1824,7 +1819,11 @@ export function TimetableGrid({
       </div>
 
       {/* Informative notice if faculty member has 0 classes scheduled in active routine */}
-      {isFaculty && classes.length === 0 && (
+      {isFaculty && (
+        (activeVersionView === 'new' && classes.length === 0) ||
+        (activeVersionView === 'previous' && (secondaryClasses || []).length === 0) ||
+        (activeVersionView === 'both' && classes.length === 0 && (secondaryClasses || []).length === 0)
+      ) && (
         <div className="rounded-xl border border-dashed border-slate-300 bg-slate-50/80 p-3 sm:p-4 dark:border-slate-800 dark:bg-slate-900/60 flex items-center justify-between gap-3 text-xs">
           <div className="flex items-center gap-2.5 text-slate-700 dark:text-slate-300">
             <Info className="h-4 w-4 text-emerald-600 dark:text-emerald-400 shrink-0" />
@@ -1833,7 +1832,7 @@ export function TimetableGrid({
               <strong>
                 {faculty?.name || activeTarget?.faculty.name} ({activeTarget?.faculty.code})
               </strong>{' '}
-              in routine version <span className="font-mono font-bold text-emerald-700 dark:text-emerald-400">{cleanVersion}</span>.
+              in routine version <span className="font-mono font-bold text-emerald-700 dark:text-emerald-400">{activeVersionView === 'previous' ? 'v4.1 (Previous)' : activeVersionView === 'new' ? 'Routinly (New)' : cleanVersion}</span>.
             </span>
           </div>
         </div>
@@ -2546,35 +2545,15 @@ export function TimetableGrid({
                       let subsectionBadgeClass =
                         'bg-black/25 text-white border-white/20 dark:bg-black/30 dark:text-white dark:border-white/20';
 
-                      if (isDualRoutine) {
-                        const isNew = c.versionType === 'new';
-                        if (isNew) {
-                          cardTheme = 'bg-blue-600 hover:bg-blue-500 text-white dark:bg-blue-600 dark:hover:bg-blue-500 dark:text-white border border-blue-700/20 dark:border-blue-500/30 shadow-xs';
-                          buttonBadgeClass = 'bg-white/15 hover:bg-white/25 text-white/95 border-white/20 hover:border-white/30 backdrop-blur-xs';
-                          subsectionBadgeClass = 'bg-black/25 text-white border-white/20 dark:bg-black/30 dark:text-white dark:border-white/20';
-                        } else {
-                          cardTheme = 'bg-emerald-600 hover:bg-emerald-500 text-white dark:bg-emerald-600 dark:hover:bg-emerald-500 dark:text-white border border-emerald-700/20 dark:border-emerald-500/30 shadow-xs';
-                          buttonBadgeClass = 'bg-white/15 hover:bg-white/25 text-white/95 border-white/20 hover:border-white/30 backdrop-blur-xs';
-                          subsectionBadgeClass = 'bg-black/25 text-white border-white/20 dark:bg-black/30 dark:text-white dark:border-white/20';
-                        }
-                      } else if (isComparing) {
-                        if (pe.isPrimaryTarget) {
-                          // Entity 1: Clean washed out slate card with solid border (dark in dark mode!)
-                          cardTheme =
-                            'bg-slate-200 hover:bg-slate-300 text-slate-800 dark:bg-slate-800 dark:hover:bg-slate-700 dark:text-slate-200 border border-slate-300 dark:border-slate-700 shadow-2xs';
-                          buttonBadgeClass =
-                            'bg-black/10 hover:bg-black/15 text-slate-800 border-black/15 dark:bg-white/10 dark:hover:bg-white/20 dark:text-slate-200 dark:border-white/20 shadow-2xs';
-                          subsectionBadgeClass =
-                            'bg-black/10 dark:bg-black/35 text-current border-black/15 dark:border-white/15';
-                        } else {
-                          // Entity 2: Clean washed out light green card with solid border (dark muted green in dark mode!)
-                          cardTheme =
-                            'bg-emerald-100 hover:bg-emerald-200 text-emerald-950 dark:bg-emerald-950 dark:hover:bg-emerald-900 dark:text-emerald-200 border border-emerald-400/70 dark:border-emerald-700/80 shadow-2xs';
-                          buttonBadgeClass =
-                            'bg-emerald-800/15 hover:bg-emerald-800/25 text-emerald-950 border-emerald-800/20 dark:bg-emerald-300/15 dark:hover:bg-emerald-300/25 dark:text-emerald-200 dark:border-emerald-300/25 shadow-2xs';
-                          subsectionBadgeClass =
-                            'bg-black/10 dark:bg-black/35 text-current border-black/15 dark:border-white/15';
-                        }
+                      const isNew = c.versionType === 'new' || activeVersionView === 'new';
+                      if (isNew) {
+                        cardTheme = 'bg-blue-600 hover:bg-blue-500 text-white dark:bg-blue-600 dark:hover:bg-blue-500 dark:text-white border border-blue-700/20 dark:border-blue-500/30 shadow-xs';
+                        buttonBadgeClass = 'bg-white/15 hover:bg-white/25 text-white/95 border-white/20 hover:border-white/30 backdrop-blur-xs';
+                        subsectionBadgeClass = 'bg-black/25 text-white border-white/20 dark:bg-black/30 dark:text-white dark:border-white/20';
+                      } else {
+                        cardTheme = 'bg-emerald-600 hover:bg-emerald-500 text-white dark:bg-emerald-600 dark:hover:bg-emerald-500 dark:text-white border border-emerald-700/20 dark:border-emerald-500/30 shadow-xs';
+                        buttonBadgeClass = 'bg-white/15 hover:bg-white/25 text-white/95 border-white/20 hover:border-white/30 backdrop-blur-xs';
+                        subsectionBadgeClass = 'bg-black/25 text-white border-white/20 dark:bg-black/30 dark:text-white dark:border-white/20';
                       }
 
                       const isLiveNow =
@@ -2699,13 +2678,13 @@ export function TimetableGrid({
                                     <div className="flex items-center gap-0.5 flex-wrap">
                                       {isComparing && pe.targetBadge && (
                                         <span
-                                          className={`shrink-0 rounded px-1 py-0.2 text-[8.5px] font-mono font-bold leading-none ${
+                                          className={`shrink-0 rounded px-1.5 py-0.2 text-[8.5px] font-mono font-bold leading-none ${
                                             pe.isPrimaryTarget
-                                              ? 'bg-slate-300 text-slate-800 dark:bg-slate-700 dark:text-slate-200'
-                                              : 'bg-emerald-200/70 text-emerald-950 dark:bg-emerald-900/70 dark:text-emerald-200 border border-emerald-400 dark:border-emerald-700'
+                                              ? 'bg-blue-900/90 text-white border border-blue-400/50'
+                                              : 'bg-emerald-900/90 text-white border border-emerald-400/50'
                                           }`}
                                         >
-                                          {pe.targetBadge}
+                                          {pe.isPrimaryTarget ? 'New' : 'Prev'}
                                         </span>
                                       )}
                                       {cardOverride && cardOverride.type !== 'regular' && (
@@ -2768,10 +2747,7 @@ export function TimetableGrid({
 
                                   {/* Teacher or Section Button (Dropped on mobile as requested, visible on tablet/desktop) */}
                                   {(() => {
-                                    const cardTarget = isComparing
-                                      ? (pe.isPrimaryTarget ? compareState?.primaryTarget : compareState?.secondaryTarget)
-                                      : activeTarget;
-                                    const isCardFromFaculty = cardTarget?.type === 'faculty';
+                                    const isCardFromFaculty = isFaculty;
 
                                     if (isCardFromFaculty) {
                                       const sectionBadge = (() => {
@@ -2874,9 +2850,16 @@ export function TimetableGrid({
             const holiday = getDepartmentHoliday(d.isoDate);
             const isExamPeriod = isMidtermExamPeriod(d.isoDate);
 
+            const effectiveAgendaClasses =
+              activeVersionView === 'previous'
+                ? (secondaryClasses || [])
+                : activeVersionView === 'both'
+                ? [...(secondaryClasses || []).map(c => ({ ...c, versionType: 'previous' as const })), ...classes.map(c => ({ ...c, versionType: 'new' as const }))]
+                : classes;
+
             const regularClasses = (d.isFriday || holiday || isExamPeriod)
               ? []
-              : classes.filter((c) => c.dayOfWeek === d.dayKey);
+              : effectiveAgendaClasses.filter((c) => c.dayOfWeek === d.dayKey);
 
             // Standalone overrides (e.g. online/makeup classes not matching a regular routine slot)
             const standaloneOverrides = (holiday ? [] : (eventOverrides || [])).filter((ev) => {
