@@ -19,7 +19,7 @@ import {
   GraduationCap,
 } from 'lucide-react';
 import { getFacultyByCode, registerDynamicFaculty } from '@/data/faculty';
-import { getCourseShortTitle, getLabSubsectionBadge } from '@/lib/course-utils';
+import { getCourseShortTitle, getLabSubsectionBadge, parseRoomParts } from '@/lib/course-utils';
 import { COURSE_CATALOG } from '@/lib/courses';
 import { formatTime12, getDhakaClock, DhakaClockState, getUpcomingDays, getCurrentWeekScheduleDays, WeekScheduleDay, ContinuousScheduleDay, getContinuousScheduleDays, timeToMinutes } from '@/lib/time-utils';
 import { HOURLY_MARKS, layoutDayEvents, getCurrentTimeTopPercent, PositionedEvent, TIMELINE_START_HOUR, TIMELINE_END_HOUR } from '@/lib/timeline-layout';
@@ -27,6 +27,7 @@ import { getTimelinePercentForInterval, getTargetLabel } from '@/lib/compare-uti
 import { VersionBadge } from './VersionBadge';
 import { ClassEventOverride } from '@/types/events';
 import { getDepartmentHoliday } from '@/data/holidays';
+import { isMidtermExamPeriod } from '@/data/midterm-exams';
 
 interface TimetableGridProps {
   section?: SectionMeta | null;
@@ -43,7 +44,7 @@ interface TimetableGridProps {
   onActiveDayChange?: (day: DayOfWeek) => void;
   routineVersion?: string;
   onVersionChange?: (newVersion: string) => void;
-  onOpenFacultyInfo?: (facultyCode: string) => void;
+  onOpenFacultyInfo?: (facultyCode: string, originPoint?: { x: number; y: number } | null) => void;
   onOpenSectionInfo?: (sectionId: string) => void;
   versionView?: VersionViewMode;
   onVersionViewChange?: (mode: VersionViewMode) => void;
@@ -88,6 +89,8 @@ export function TimetableGrid({
   const isFaculty = activeTarget?.type === 'faculty';
   const faculty = isFaculty ? activeTarget.faculty : null;
 
+  const isDualRoutine = Boolean(secondaryClasses && secondaryClasses.length > 0);
+
   // 3-way version selection: 'both' | 'new' | 'previous'
   const [internalVersionView, setInternalVersionView] = useState<VersionViewMode>(() => {
     if (typeof window !== 'undefined') {
@@ -128,12 +131,30 @@ export function TimetableGrid({
     }
   }, [onVersionViewChange]);
 
-  // Routine comparison is rendered in matrix (timetable grid) view
-  const effectiveViewMode = 'matrix';
+  // Default to agenda on mobile screens (< 768px), matrix (week view) on desktop unless ?view=agenda is passed in URL
+  const [internalViewMode, setInternalViewMode] = useState<'matrix' | 'agenda'>('matrix');
+  const effectiveViewMode = viewMode !== undefined ? viewMode : internalViewMode;
+  const setEffectiveViewMode = onViewModeChange || setInternalViewMode;
+
   const cleanVersion = (() => {
     const match = (routineVersion || '').match(/\bv?([0-9]+(?:\.[0-9]+)?)\b/i);
     return match ? `v${match[1]}` : (routineVersion || 'v4.1');
   })();
+
+  useEffect(() => {
+    const timer = setTimeout(() => {
+      if (typeof window !== 'undefined') {
+        const params = new URLSearchParams(window.location.search);
+        const v = params.get('view') || params.get('v');
+        if (v === 'agenda' || v === 'matrix') {
+          setInternalViewMode(v);
+        } else {
+          setInternalViewMode(window.innerWidth < 768 ? 'agenda' : 'matrix');
+        }
+      }
+    }, 0);
+    return () => clearTimeout(timer);
+  }, []);
 
   // Determine current day & minute in Asia/Dhaka with 1-second precision
   const [currentDhakaTime, setCurrentDhakaTime] = useState<DhakaClockState>(() => getDhakaClock());
@@ -289,7 +310,7 @@ export function TimetableGrid({
   const minZoomLimit = 1.0;
 
   // Cached time column width to avoid expensive layout thrashing (querySelector + offsetWidth) during 60/120fps scrolling
-  const timeColWidthRef = useRef<number>(typeof window !== 'undefined' && window.innerWidth < 640 ? 44 : 68);
+  const timeColWidthRef = useRef<number>(typeof window !== 'undefined' && window.innerWidth < 640 ? 38 : 68);
 
   const measureTimeColWidth = useCallback(() => {
     if (typeof window === 'undefined') return 68;
@@ -302,7 +323,7 @@ export function TimetableGrid({
         return timeHeader.offsetWidth;
       }
     }
-    const val = window.innerWidth < 640 ? 44 : 68;
+    const val = window.innerWidth < 640 ? 38 : 68;
     timeColWidthRef.current = val;
     return val;
   }, []);
@@ -963,17 +984,12 @@ export function TimetableGrid({
     const todayIdx = continuousDays.findIndex((d) => d.isToday);
     if (todayIdx < 0) return;
 
-    const currentZoom = zoomDaysRef.current;
-    let targetIdx = todayIdx;
-    if (currentZoom >= 5.5) {
-      // In full week view (7 days), show the whole current week starting from Saturday
-      const dayInWeek = continuousDays[todayIdx]?.dayIndexInWeek ?? 0;
-      targetIdx = Math.max(0, todayIdx - dayInWeek);
-    }
+    // Place Today in view with one day behind Today (yesterday) on the left and other days after Today to the right
+    const targetIdx = Math.max(0, todayIdx - 1);
 
     const timeWidth = getTimeColWidth();
     const dayAreaWidth = Math.max(1, container.clientWidth - timeWidth);
-    const dayWidth = dayAreaWidth / currentZoom;
+    const dayWidth = dayAreaWidth / zoomDaysRef.current;
     container.scrollTo({
       left: Math.max(0, targetIdx * dayWidth),
       behavior: smooth ? 'smooth' : 'auto',
@@ -1022,12 +1038,8 @@ export function TimetableGrid({
       if (todayIdx < 0) return false;
 
       const currentZoom = zoomDaysRef.current;
-      let targetIdx = todayIdx;
-      if (currentZoom >= 5.5) {
-        // In full week view (7 days), show the whole current week starting from Saturday
-        const dayInWeek = continuousDays[todayIdx]?.dayIndexInWeek ?? 0;
-        targetIdx = Math.max(0, todayIdx - dayInWeek);
-      }
+      // Place Today in view with one day behind Today (yesterday) on the left and other days after Today to the right
+      const targetIdx = Math.max(0, todayIdx - 1);
 
       const timeWidth = getTimeColWidth();
       const dayAreaWidth = Math.max(1, container.clientWidth - timeWidth);
@@ -1085,6 +1097,11 @@ export function TimetableGrid({
 
   // Dynamic Notion Calendar Date Title based on visible days onscreen
   const notionDateTitle = useMemo(() => {
+    if (effectiveViewMode === 'agenda') {
+      const firstUpcoming = upcomingDays[0];
+      return firstUpcoming ? `${firstUpcoming.monthLong} ${firstUpcoming.year || 2026}` : 'Schedule';
+    }
+
     if (continuousDays.length === 0) return 'October 2026';
 
     const first = continuousDays[visibleDateRange.startIdx] || continuousDays[0];
@@ -1096,9 +1113,9 @@ export function TimetableGrid({
       return `${first.monthShort} – ${last.monthShort} ${last.year}`;
     }
     return 'October 2026';
-  }, [continuousDays, visibleDateRange]);
+  }, [continuousDays, visibleDateRange, effectiveViewMode, upcomingDays]);
 
-  // Calendar View Keyboard Shortcuts: Arrows/J/K for Week Navigation
+  // Calendar View Keyboard Shortcuts: W for Week, A for Agenda, Arrows/J/K for Week Navigation
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
       if (
@@ -1109,36 +1126,57 @@ export function TimetableGrid({
         return;
       }
 
-      if (e.key === 'ArrowDown' || e.key === 'j' || e.key === 'J' || e.key === 'PageDown' || e.key === 'ArrowRight') {
+      if (e.key === 'w' || e.key === 'W') {
+        e.preventDefault();
+        setEffectiveViewMode('matrix');
+      } else if (e.key === 'a' || e.key === 'A') {
+        e.preventDefault();
+        setEffectiveViewMode('agenda');
+      } else if (effectiveViewMode === 'matrix' && (e.key === 'ArrowDown' || e.key === 'j' || e.key === 'J' || e.key === 'PageDown' || e.key === 'ArrowRight')) {
         e.preventDefault();
         handleNext();
-      } else if (e.key === 'ArrowUp' || e.key === 'k' || e.key === 'K' || e.key === 'PageUp' || e.key === 'ArrowLeft') {
+      } else if (effectiveViewMode === 'matrix' && (e.key === 'ArrowUp' || e.key === 'k' || e.key === 'K' || e.key === 'PageUp' || e.key === 'ArrowLeft')) {
         e.preventDefault();
         handlePrev();
-      } else if (e.key === 't' || e.key === 'T') {
+      } else if (effectiveViewMode === 'matrix' && (e.key === 't' || e.key === 'T')) {
         e.preventDefault();
         scrollToToday(true);
-      } else if (e.key === 'p' || e.key === 'P' || e.key === '1') {
-        e.preventDefault();
-        handleSetVersionView('previous');
-      } else if (e.key === 'b' || e.key === 'B' || e.key === '2') {
-        e.preventDefault();
-        handleSetVersionView('both');
-      } else if (e.key === 'n' || e.key === 'N' || e.key === '3') {
-        e.preventDefault();
-        handleSetVersionView('new');
       }
     };
 
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [handleNext, handlePrev, scrollToToday, handleSetVersionView]);
+  }, [effectiveViewMode, setEffectiveViewMode, handleNext, handlePrev, scrollToToday]);
 
-  const isComparing = activeVersionView === 'both';
+
+
+  const isComparing = !!compareState?.active;
+  const isSecondaryPriority = compareState?.priority === 'secondary';
+  const isBlockVisible = compareState?.secondaryVisibility === 'block';
+
+  const highTarget = isComparing
+    ? (isSecondaryPriority ? compareState.secondaryTarget : compareState.primaryTarget)
+    : activeTarget;
+  const highBadge = highTarget ? getTargetLabel(highTarget).badge : (section?.id || 'Class');
+
+  const lowTarget = isComparing
+    ? (isSecondaryPriority ? compareState.primaryTarget : compareState.secondaryTarget)
+    : null;
+  const lowBadge = lowTarget ? getTargetLabel(lowTarget).badge : '';
 
   // Memoize positioned events and off-grid overrides for each continuous day
   // Any standalone event that fits within the timeline (8 AM - 6 PM) follows the grid!
   const continuousDayEventsMap = useMemo(() => {
+    const highClasses = isComparing
+      ? (isSecondaryPriority ? (secondaryClasses || []) : classes)
+      : classes;
+
+    const lowClasses = isComparing && isBlockVisible
+      ? (isSecondaryPriority ? classes : (secondaryClasses || []))
+      : [];
+
+    const primaryIdSet = new Set((classes || []).map((c) => c.id));
+
     const map: Record<
       number,
       {
@@ -1153,40 +1191,125 @@ export function TimetableGrid({
         continue;
       }
 
-      // 1. Previous routine classes (Green)
-      const prevDay: RoutineClass[] = (secondaryClasses || [])
-        .filter((c) => c.dayOfWeek === d.dayKey)
-        .map((c) => ({ ...c, versionType: 'previous' as const }));
+      const isExamPeriod = isMidtermExamPeriod(d.isoDate);
+      const highDay = isExamPeriod ? [] : highClasses.filter((c) => c.dayOfWeek === d.dayKey);
+      const lowDay = isExamPeriod ? [] : lowClasses.filter((c) => c.dayOfWeek === d.dayKey);
 
-      // 2. New routine classes (Blue)
-      const newDay: RoutineClass[] = (classes || [])
-        .filter((c) => c.dayOfWeek === d.dayKey)
-        .map((c) => ({ ...c, versionType: 'new' as const }));
+      // Filter active overrides for this specific date
+      const activeDayOverrides = (eventOverrides || []).filter((ev) => {
+        if (ev.status === 'CANCELLED') return false;
+        if (ev.date) {
+          const matchesIso = d.isoDate && ev.date.trim() === d.isoDate.trim();
+          const dayNum = String(parseInt(ev.date.split('-')[2] || '0', 10));
+          const matchesDayNum = d.dayNumber === dayNum && (!ev.dayOfWeek || d.dayKey === ev.dayOfWeek);
+          if (!matchesIso && !matchesDayNum) return false;
+        } else if (ev.dayOfWeek && ev.dayOfWeek !== d.dayKey) {
+          return false;
+        }
+        return true;
+      });
 
-      // Filter classes based on selected version view: 'both' | 'new' | 'previous'
-      let combined: RoutineClass[] = [];
-      if (activeVersionView === 'both') {
-        combined = [...prevDay, ...newDay];
-      } else if (activeVersionView === 'new') {
-        combined = newDay;
-      } else {
-        combined = prevDay;
+      // Filter by subsection if active
+      const filteredDayOverrides = activeDayOverrides.filter((ev) => {
+        if (subSection === '1' && (ev.courseCode.includes('O2') || ev.title.includes('O2'))) return false;
+        if (subSection === '2' && (ev.courseCode.includes('O1') || ev.title.includes('O1'))) return false;
+        return true;
+      });
+
+      // An override matches a regular class slot if it shares course code and start time
+      const isMatchingRegularClass = (ev: ClassEventOverride) => {
+        const evClean = (ev.courseCode || '').split('(')[0].trim().toUpperCase();
+        return [...highDay, ...lowDay].some((c) => {
+          const cClean = c.courseCode.split('(')[0].trim().toUpperCase();
+          if (cClean !== evClean) return false;
+          if (ev.startTime && c.startTime && ev.startTime !== c.startTime) return false;
+          return true;
+        });
+      };
+
+      const standaloneOverrides = filteredDayOverrides.filter((ev) => !isMatchingRegularClass(ev));
+
+      // Separate standalone overrides into on-grid (fits in 8 AM - 6 PM timeline) and off-grid (e.g. evening classes >= 18:00)
+      const onGridOverrides: ClassEventOverride[] = [];
+      const offGridOverrides: ClassEventOverride[] = [];
+
+      for (const ev of standaloneOverrides) {
+        if (!ev.startTime) {
+          offGridOverrides.push(ev);
+          continue;
+        }
+        const sMin = timeToMinutes(ev.startTime);
+        if (isNaN(sMin)) {
+          offGridOverrides.push(ev);
+          continue;
+        }
+        const eMin = ev.endTime ? timeToMinutes(ev.endTime) : sMin + 90;
+        // Check overlap with timeline bounds (8:00 AM / 480 to 6:00 PM / 1080)
+        if (sMin < TIMELINE_END_HOUR * 60 && eMin > TIMELINE_START_HOUR * 60) {
+          onGridOverrides.push(ev);
+        } else {
+          offGridOverrides.push(ev);
+        }
       }
+
+      // Create synthetic RoutineClass objects for on-grid overrides so they can be positioned on the grid
+      const syntheticHighClasses: { routineClass: RoutineClass; override: ClassEventOverride }[] = onGridOverrides.map((ev) => {
+        const isLab = ev.courseCode.toLowerCase().includes('lab') || ev.title.toLowerCase().includes('lab');
+        const subSecMatch = ev.courseCode.match(/O([12])/i) || ev.title.match(/O([12])/i);
+        const startMin = timeToMinutes(ev.startTime!);
+        const endMin = ev.endTime ? timeToMinutes(ev.endTime) : startMin + 90;
+        const endH = Math.floor(endMin / 60);
+        const endM = endMin % 60;
+        const defaultEndTime = `${String(endH).padStart(2, '0')}:${String(endM).padStart(2, '0')}`;
+
+        const rClass: RoutineClass = {
+          id: ev.id,
+          batch: section?.batch || '',
+          section: section?.sectionLetter || '',
+          sectionId: ev.sectionId,
+          subSection: subSecMatch ? (subSecMatch[1] as '1' | '2') : null,
+          courseCode: ev.courseCode,
+          courseTitle: ev.title || ev.courseCode,
+          teacherCode: '',
+          room: ev.room || 'TBD',
+          dayOfWeek: d.dayKey as DayOfWeek,
+          startTime: ev.startTime!,
+          endTime: ev.endTime || defaultEndTime,
+          type: isLab ? 'Lab' : 'Theory',
+          color: ev.type === 'exam' ? 'rose' : (ev.type === 'quiz' || ev.type === 'ct' ? 'amber' : 'sky'),
+        };
+        return { routineClass: rClass, override: ev };
+      });
+
+      const combined = [
+        ...highDay,
+        ...syntheticHighClasses.map((s) => s.routineClass),
+        ...lowDay,
+      ];
 
       const positioned = layoutDayEvents(combined);
 
+      const overrideMap = new Map(syntheticHighClasses.map((s) => [s.routineClass.id, s.override]));
+      const highIdSet = new Set([
+        ...highDay.map((c) => c.id),
+        ...syntheticHighClasses.map((s) => s.routineClass.id),
+      ]);
+
       const positionedEvents: AugmentedPositionedEvent[] = positioned.map((pe) => {
-        const isNew = pe.event.versionType === 'new';
+        const override = overrideMap.get(pe.event.id);
+        const isHigh = !isComparing || highIdSet.has(pe.event.id);
+        const isPrimary = primaryIdSet.has(pe.event.id) || !!override;
         return {
           ...pe,
-          isHighPriority: true, // Both versions equally emphasized
-          isBlockMode: false,   // No faded block mode
-          targetBadge: isNew ? 'New (Routinly)' : 'Prev (v4.1)',
-          isPrimaryTarget: isNew,
+          isHighPriority: isHigh,
+          isBlockMode: isComparing && !isHigh,
+          targetBadge: isHigh ? highBadge : lowBadge,
+          isPrimaryTarget: isPrimary,
+          override,
         };
       });
 
-      map[d.globalDayIndex] = { positionedEvents, offGridOverrides: [] };
+      map[d.globalDayIndex] = { positionedEvents, offGridOverrides };
     }
 
     return map;
@@ -1194,7 +1317,14 @@ export function TimetableGrid({
     continuousDays,
     classes,
     secondaryClasses,
-    activeVersionView,
+    eventOverrides,
+    isComparing,
+    isSecondaryPriority,
+    isBlockVisible,
+    highBadge,
+    lowBadge,
+    subSection,
+    section,
   ]);
 
   // Google Calendar style current time bar metrics
@@ -1242,13 +1372,11 @@ export function TimetableGrid({
         {/* Top Header: Badge, Type & Close Button */}
         <div className="flex items-center justify-between gap-1 pb-1 border-b border-slate-200/70 dark:border-slate-800">
           <div className="flex items-center gap-1.5 flex-wrap min-w-0">
-            <span className={`px-1.5 py-0.5 rounded font-mono text-[10px] font-bold ${
-              item.versionType === 'new'
-                ? 'bg-blue-100 text-blue-900 dark:bg-blue-950 dark:text-blue-300 border border-blue-300 dark:border-blue-700'
-                : 'bg-emerald-100 text-emerald-900 dark:bg-emerald-950 dark:text-emerald-300 border border-emerald-300 dark:border-emerald-700'
-            }`}>
-              {item.versionType === 'new' ? 'New Routine (Routinly)' : 'Previous Routine (Published v4.1)'}
-            </span>
+            {targetBadge && isComparing && (
+              <span className="px-1.5 py-0.2 rounded font-mono text-[9.5px] font-bold bg-slate-200 dark:bg-slate-700 text-slate-800 dark:text-slate-200">
+                {targetBadge}
+              </span>
+            )}
             {override ? (
               <span className="px-1.5 py-0.2 rounded font-mono text-[9.5px] font-bold uppercase bg-amber-100 text-amber-900 dark:bg-amber-950 dark:text-amber-300 border border-amber-300/60 dark:border-amber-700/60">
                 {override.type === 'ct' ? 'CT' : override.type === 'quiz' ? 'Quiz' : override.type === 'online' ? 'Online' : (override.type?.toUpperCase() || 'Event')}
@@ -1336,7 +1464,11 @@ export function TimetableGrid({
           <div className="flex items-center gap-1.5">
             <MapPin className="h-3 w-3 text-slate-400 shrink-0" />
             <span className="font-bold text-slate-900 dark:text-slate-100">
-              {item.room ? (/^room\b/i.test(item.room.trim()) ? item.room.trim() : `Room ${item.room.trim()}`) : 'TBA'}
+              {(() => {
+                if (!item.room) return 'TBA';
+                const { prefix, number } = parseRoomParts(item.room);
+                return prefix ? `Room ${prefix} ${number}` : `Room ${number}`;
+              })()}
             </span>
           </div>
         </div>
@@ -1351,13 +1483,19 @@ export function TimetableGrid({
 
         {/* Override Notice if present */}
         {override?.description && override.type !== 'regular' && (
-          <div className={`rounded-lg border p-2 text-[10.5px] font-sans leading-snug ${
+          <div className={`rounded-lg border p-2 text-[10.5px] font-sans leading-snug whitespace-pre-line ${
             override.type === 'cancelled'
               ? 'border-rose-300 dark:border-rose-800 bg-rose-50/90 dark:bg-rose-950/40 text-rose-900 dark:text-rose-200'
+              : override.type === 'exam'
+              ? 'border-blue-300 dark:border-blue-800 bg-blue-50/90 dark:bg-blue-950/40 text-blue-900 dark:text-blue-200'
               : 'border-sky-200 dark:border-sky-800 bg-sky-50/70 dark:bg-sky-950/40 text-slate-700 dark:text-slate-300'
           }`}>
             <span className="font-bold block mb-0.5">
-              {override.type === 'cancelled' ? '⚠️ NOTICE:' : 'ANNOUNCEMENT:'}
+              {override.type === 'cancelled'
+                ? '⚠️ NOTICE:'
+                : override.type === 'exam'
+                ? '📝 MIDTERM EXAMINATION:'
+                : 'ANNOUNCEMENT:'}
             </span>
             {override.description}
           </div>
@@ -1420,10 +1558,14 @@ export function TimetableGrid({
                 type="button"
                 onClick={(e) => {
                   e.stopPropagation();
+                  const rect = e.currentTarget.getBoundingClientRect();
                   setExpandedCard(null);
-                  onOpenFacultyInfo(item.teacherCode);
+                  onOpenFacultyInfo(item.teacherCode, {
+                    x: Math.round(rect.left + rect.width / 2),
+                    y: Math.round(rect.top + rect.height / 2),
+                  });
                 }}
-                className="inline-flex items-center gap-0.5 px-1 py-0.5 rounded text-[10px] font-semibold text-slate-500 hover:text-emerald-600 dark:hover:text-emerald-400 transition-colors shrink-0 cursor-pointer"
+                className="inline-flex items-center gap-0.5 px-1.5 py-0.5 rounded text-[10px] font-medium text-slate-500 hover:text-emerald-600 dark:hover:text-emerald-400 transition-colors shrink-0 cursor-pointer"
               >
                 <span>Profile</span>
                 <ArrowUpRight className="h-2.5 w-2.5" />
@@ -1478,24 +1620,16 @@ export function TimetableGrid({
                 </button>
               </div>
 
-              {/* Subtle, understated "Today" button - gently reveals only when Today is offscreen */}
-              <div
-                className={`overflow-hidden transition-all duration-500 ease-out flex items-center ${
-                  !isTodayVisible
-                    ? 'max-w-[70px] opacity-100'
-                    : 'max-w-0 opacity-0 pointer-events-none'
-                }`}
+              {/* Today button - always accessible */}
+              <button
+                type="button"
+                onClick={() => scrollToToday(true)}
+                title="Jump to Today (or press T)"
+                aria-label="Jump to Today"
+                className="inline-flex items-center px-2 py-1 sm:px-2.5 sm:py-1 text-[11px] sm:text-xs font-medium rounded-lg border border-slate-200/90 dark:border-slate-800 bg-slate-100/80 dark:bg-slate-900 text-slate-600 dark:text-slate-300 hover:text-slate-900 dark:hover:text-white hover:bg-slate-200/70 dark:hover:bg-slate-800 shadow-2xs transition-colors cursor-pointer active:scale-95 whitespace-nowrap"
               >
-                <button
-                  type="button"
-                  onClick={() => scrollToToday(true)}
-                  title="Jump to Today (or press T)"
-                  aria-label="Jump to Today"
-                  className="inline-flex items-center px-2 py-1 sm:px-2.5 sm:py-1 text-[11px] sm:text-xs font-medium rounded-lg border border-slate-200/90 dark:border-slate-800 bg-slate-100/80 dark:bg-slate-900 text-slate-600 dark:text-slate-300 hover:text-slate-900 dark:hover:text-white hover:bg-slate-200/70 dark:hover:bg-slate-800 shadow-2xs transition-colors cursor-pointer active:scale-95 whitespace-nowrap"
-                >
-                  Today
-                </button>
-              </div>
+                Today
+              </button>
 
               {/* Relative week badge when not on current week */}
               <div
@@ -1520,55 +1654,35 @@ export function TimetableGrid({
             </div>
           </div>
 
-          {/* Mobile Version Filter Selector */}
+          {/* Mobile-only view switcher on Row 1 (Right) */}
           <div className="sm:hidden flex items-center shrink-0">
-            <div
-              role="group"
-              aria-label="Select routine version"
-              className="inline-flex items-center p-0.5 rounded-lg border border-slate-200/90 bg-slate-100/90 dark:border-slate-800 dark:bg-slate-900/90 font-mono text-[10.5px]"
-            >
+            <div className="inline-flex items-center gap-0.5 rounded-xl border border-slate-200 bg-slate-100/90 dark:border-slate-800 dark:bg-slate-950 p-0.5 shadow-2xs">
               <button
                 type="button"
-                onClick={() => handleSetVersionView('previous')}
-                aria-pressed={activeVersionView === 'previous'}
-                title="View Previous Routine only (v4.1)"
-                className={`flex items-center gap-1 px-1.5 py-0.5 rounded-md font-bold transition-all cursor-pointer ${
-                  activeVersionView === 'previous'
-                    ? 'bg-emerald-600 text-white shadow-xs'
-                    : 'text-slate-600 dark:text-slate-400'
+                onClick={() => setEffectiveViewMode('matrix')}
+                aria-pressed={effectiveViewMode === 'matrix'}
+                className={`flex items-center justify-center gap-1 rounded-lg px-2.5 py-1 text-xs font-semibold transition-colors cursor-pointer min-h-[28px] ${
+                  effectiveViewMode === 'matrix'
+                    ? 'bg-white text-slate-900 shadow-xs border border-slate-200/80 dark:bg-slate-800 dark:text-white dark:border-slate-700 font-bold'
+                    : 'text-slate-600 hover:text-slate-900 dark:text-slate-400 dark:hover:text-white'
                 }`}
               >
-                <span className={`w-1.5 h-1.5 rounded-full shrink-0 ${activeVersionView === 'previous' ? 'bg-white' : 'bg-emerald-500'}`} />
-                <span>Prev</span>
+                <LayoutGrid className="h-3 w-3 text-emerald-600 dark:text-emerald-400" />
+                <span>Week</span>
               </button>
 
               <button
                 type="button"
-                onClick={() => handleSetVersionView('both')}
-                aria-pressed={activeVersionView === 'both'}
-                title="Compare Both Versions"
-                className={`flex items-center gap-1 px-1.5 py-0.5 rounded-md font-bold transition-all cursor-pointer ${
-                  activeVersionView === 'both'
-                    ? 'bg-white dark:bg-slate-800 text-slate-900 dark:text-white shadow-xs border border-slate-200/90 dark:border-slate-700'
-                    : 'text-slate-600 dark:text-slate-400'
+                onClick={() => setEffectiveViewMode('agenda')}
+                aria-pressed={effectiveViewMode === 'agenda'}
+                className={`flex items-center justify-center gap-1 rounded-lg px-2.5 py-1 text-xs font-semibold transition-colors cursor-pointer min-h-[28px] ${
+                  effectiveViewMode === 'agenda'
+                    ? 'bg-white text-slate-900 shadow-xs border border-slate-200/80 dark:bg-slate-800 dark:text-white dark:border-slate-700 font-bold'
+                    : 'text-slate-600 hover:text-slate-900 dark:text-slate-400 dark:hover:text-white'
                 }`}
               >
-                <span>Both</span>
-              </button>
-
-              <button
-                type="button"
-                onClick={() => handleSetVersionView('new')}
-                aria-pressed={activeVersionView === 'new'}
-                title="View New Routine only (Routinly)"
-                className={`flex items-center gap-1 px-1.5 py-0.5 rounded-md font-bold transition-all cursor-pointer ${
-                  activeVersionView === 'new'
-                    ? 'bg-blue-600 text-white shadow-xs'
-                    : 'text-slate-600 dark:text-slate-400'
-                }`}
-              >
-                <span className={`w-1.5 h-1.5 rounded-full shrink-0 ${activeVersionView === 'new' ? 'bg-white' : 'bg-blue-500'}`} />
-                <span>New</span>
+                <CalendarDays className="h-3 w-3 text-emerald-600 dark:text-emerald-400" />
+                <span>Agenda</span>
               </button>
             </div>
           </div>
@@ -1594,7 +1708,13 @@ export function TimetableGrid({
               {onOpenFacultyInfo && (
                 <button
                   type="button"
-                  onClick={() => onOpenFacultyInfo(faculty.code)}
+                  onClick={(e) => {
+                    const rect = e.currentTarget.getBoundingClientRect();
+                    onOpenFacultyInfo(faculty.code, {
+                      x: Math.round(rect.left + rect.width / 2),
+                      y: Math.round(rect.top + rect.height / 2),
+                    });
+                  }}
                   title={`View details & contact info for ${faculty.name}`}
                   aria-label={`View details for ${faculty.name}`}
                   className="inline-flex items-center justify-center p-0.5 rounded text-slate-400 hover:text-emerald-600 dark:hover:text-emerald-400 hover:bg-slate-200/60 dark:hover:bg-slate-800 transition-colors cursor-pointer shrink-0"
@@ -1621,73 +1741,44 @@ export function TimetableGrid({
           ) : null}
         </div>
 
-        {/* Desktop Version Filter Selector */}
+        {/* Desktop-only: View switcher on the right */}
         <div className="hidden sm:flex items-center justify-end shrink-0 sm:flex-1">
-          <div
-            role="group"
-            aria-label="Select routine version"
-            className="inline-flex items-center p-0.5 rounded-xl border border-slate-200/90 bg-slate-100/80 dark:border-slate-800 dark:bg-slate-900/90 shadow-2xs font-mono text-xs"
-          >
-            {/* Previous Version Button */}
+          <div className="inline-flex items-center gap-0.5 rounded-xl border border-slate-200 bg-slate-100/90 dark:border-slate-800 dark:bg-slate-950 p-0.5 shadow-2xs">
+            {/* Week View */}
             <button
               type="button"
-              onClick={() => handleSetVersionView('previous')}
-              title="View Previous Routine only (Published v4.1)"
-              aria-pressed={activeVersionView === 'previous'}
-              className={`flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-[11px] font-bold transition-all cursor-pointer ${
-                activeVersionView === 'previous'
-                  ? 'bg-emerald-600 text-white shadow-xs'
-                  : 'text-slate-600 dark:text-slate-400 hover:text-emerald-700 dark:hover:text-emerald-300'
+              onClick={() => setEffectiveViewMode('matrix')}
+              aria-pressed={effectiveViewMode === 'matrix'}
+              className={`flex items-center justify-center gap-1.5 rounded-lg px-3 py-1.5 text-xs font-semibold transition-colors cursor-pointer min-h-[32px] ${
+                effectiveViewMode === 'matrix'
+                  ? 'bg-white text-slate-900 shadow-xs border border-slate-200/80 dark:bg-slate-800 dark:text-white dark:border-slate-700 font-bold'
+                  : 'text-slate-600 hover:text-slate-900 dark:text-slate-400 dark:hover:text-white'
               }`}
             >
-              <span className={`w-2 h-2 rounded-full shrink-0 ${activeVersionView === 'previous' ? 'bg-white' : 'bg-emerald-500'}`} />
-              <span>Prev (v4.1)</span>
+              <LayoutGrid className="h-3.5 w-3.5 text-emerald-600 dark:text-emerald-400" />
+              <span>Week</span>
             </button>
 
-            {/* Both / Compare Button */}
+            {/* Agenda View */}
             <button
               type="button"
-              onClick={() => handleSetVersionView('both')}
-              title="Compare Both Routine Versions side by side"
-              aria-pressed={activeVersionView === 'both'}
-              className={`flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-[11px] font-bold transition-all cursor-pointer ${
-                activeVersionView === 'both'
-                  ? 'bg-white dark:bg-slate-800 text-slate-900 dark:text-white shadow-xs border border-slate-200/90 dark:border-slate-700'
-                  : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white'
+              onClick={() => setEffectiveViewMode('agenda')}
+              aria-pressed={effectiveViewMode === 'agenda'}
+              className={`flex items-center justify-center gap-1.5 rounded-lg px-3 py-1.5 text-xs font-semibold transition-colors cursor-pointer min-h-[32px] ${
+                effectiveViewMode === 'agenda'
+                  ? 'bg-white text-slate-900 shadow-xs border border-slate-200/80 dark:bg-slate-800 dark:text-white dark:border-slate-700 font-bold'
+                  : 'text-slate-600 hover:text-slate-900 dark:text-slate-400 dark:hover:text-white'
               }`}
             >
-              <span className="flex -space-x-1 shrink-0">
-                <span className="w-2 h-2 rounded-full bg-emerald-500 ring-1 ring-white dark:ring-slate-900" />
-                <span className="w-2 h-2 rounded-full bg-blue-500 ring-1 ring-white dark:ring-slate-900" />
-              </span>
-              <span>Both</span>
-            </button>
-
-            {/* New Version Button */}
-            <button
-              type="button"
-              onClick={() => handleSetVersionView('new')}
-              title="View New Routine only (Routinly Optimized)"
-              aria-pressed={activeVersionView === 'new'}
-              className={`flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-[11px] font-bold transition-all cursor-pointer ${
-                activeVersionView === 'new'
-                  ? 'bg-blue-600 text-white shadow-xs'
-                  : 'text-slate-600 dark:text-slate-400 hover:text-blue-700 dark:hover:text-blue-300'
-              }`}
-            >
-              <span className={`w-2 h-2 rounded-full shrink-0 ${activeVersionView === 'new' ? 'bg-white' : 'bg-blue-500'}`} />
-              <span>New (Routinly)</span>
+              <CalendarDays className="h-3.5 w-3.5 text-emerald-600 dark:text-emerald-400" />
+              <span>Agenda</span>
             </button>
           </div>
         </div>
       </div>
 
       {/* Informative notice if faculty member has 0 classes scheduled in active routine */}
-      {isFaculty && (
-        (activeVersionView === 'new' && classes.length === 0) ||
-        (activeVersionView === 'previous' && (secondaryClasses || []).length === 0) ||
-        (activeVersionView === 'both' && classes.length === 0 && (secondaryClasses || []).length === 0)
-      ) && (
+      {isFaculty && classes.length === 0 && (
         <div className="rounded-xl border border-dashed border-slate-300 bg-slate-50/80 p-3 sm:p-4 dark:border-slate-800 dark:bg-slate-900/60 flex items-center justify-between gap-3 text-xs">
           <div className="flex items-center gap-2.5 text-slate-700 dark:text-slate-300">
             <Info className="h-4 w-4 text-emerald-600 dark:text-emerald-400 shrink-0" />
@@ -1696,11 +1787,7 @@ export function TimetableGrid({
               <strong>
                 {faculty?.name || activeTarget?.faculty.name} ({activeTarget?.faculty.code})
               </strong>{' '}
-              {activeVersionView === 'new'
-                ? 'in the New Routine (Routinly).'
-                : activeVersionView === 'previous'
-                ? 'in the Previous Routine (v4.1).'
-                : 'in either routine version.'}
+              in routine version <span className="font-mono font-bold text-emerald-700 dark:text-emerald-400">{cleanVersion}</span>.
             </span>
           </div>
         </div>
@@ -1727,7 +1814,7 @@ export function TimetableGrid({
           }`}
           style={{
             containerType: 'inline-size',
-            scrollPaddingLeft: 'var(--col-time, 44px)',
+            scrollPaddingLeft: 'var(--col-time, 38px)',
           }}
         >
           <div
@@ -1737,13 +1824,13 @@ export function TimetableGrid({
               width: `calc(var(--col-time) + ${continuousDays.length} * ((100cqw - var(--col-time)) / ${zoomDays}))`,
             }}
           >
-            {/* ROW 1: HEADER - Col 1 is GMT+06 Timezone Label (Topest Corner) */}
+            {/* ROW 1: HEADER - Col 1 is UTC+6 Timezone Label (Top Corner) */}
             <div
-              className="sticky top-0 left-0 z-35 flex items-center justify-end pr-1 sm:pr-2 py-2 bg-slate-50 dark:bg-[#080d1a] border-b border-r border-slate-200 dark:border-slate-800 shadow-[2px_0_4px_-1px_rgba(0,0,0,0.06)] dark:shadow-[2px_0_4px_-1px_rgba(0,0,0,0.3)]"
+              className="sticky top-0 left-0 z-35 flex items-center justify-center p-1 bg-slate-50 dark:bg-[#080d1a] border-b border-r border-slate-200 dark:border-slate-800 shadow-[2px_0_4px_-1px_rgba(0,0,0,0.06)] dark:shadow-[2px_0_4px_-1px_rgba(0,0,0,0.3)]"
               style={{ gridColumn: 1, gridRow: 1 }}
             >
               <span className="text-[9px] sm:text-[10px] font-mono font-bold uppercase tracking-wider text-slate-400 dark:text-slate-500">
-                GMT+06
+                UTC+6
               </span>
             </div>
 
@@ -1758,7 +1845,7 @@ export function TimetableGrid({
                 <div
                   key={`hdr-${d.globalDayIndex}-${d.dayKey}-${d.formattedDate}`}
                   id={`matrix-col-${d.weekOffset}-${d.dayKey}`}
-                  className={`sticky top-0 z-26 flex flex-col items-center justify-center py-2 px-1 text-center border-b transition-colors ${
+                  className={`sticky top-0 z-26 flex flex-col items-center justify-center py-1.5 px-1 text-center border-b transition-colors ${
                     isToday
                       ? 'bg-emerald-500/[0.04] dark:bg-emerald-500/[0.07] border-b-emerald-500/40 dark:border-b-emerald-500/40'
                       : holiday
@@ -1774,9 +1861,9 @@ export function TimetableGrid({
                     gridRow: 1,
                   }}
                 >
-                  <div className="flex items-center gap-1">
+                  <div className="flex items-center justify-center gap-1 min-w-0">
                     <span
-                      className={`text-[11px] font-semibold uppercase tracking-wider ${
+                      className={`text-[10.5px] sm:text-[11px] font-semibold uppercase tracking-wider truncate ${
                         isToday
                           ? 'text-emerald-600 dark:text-emerald-400 font-bold'
                           : holiday
@@ -1788,8 +1875,8 @@ export function TimetableGrid({
                     >
                       {zoomDays <= 1.5 ? d.dayLabel : d.dayShort}
                     </span>
-                    {(d.dayNumber === '1' || isWeekStart) && (
-                      <span className="text-[9px] font-mono font-bold text-emerald-600 dark:text-emerald-400">
+                    {d.dayNumber === '1' && (
+                      <span className="hidden sm:inline text-[9px] font-mono font-bold text-emerald-600 dark:text-emerald-400">
                         {d.monthShort}
                       </span>
                     )}
@@ -1807,6 +1894,20 @@ export function TimetableGrid({
                   >
                     {d.dayNumber}
                   </span>
+
+                  {/* All-Day / Status Pill under day number (Google Calendar Style) */}
+                  {holiday ? (
+                    <span
+                      title={`${holiday.name} - University Closed`}
+                      className="mt-1 inline-flex items-center justify-center px-1.5 py-0.5 rounded text-[8px] sm:text-[9px] font-mono font-bold bg-amber-500/20 text-amber-800 dark:text-amber-300 border border-amber-500/35 truncate max-w-full leading-none select-none shadow-2xs"
+                    >
+                      {holiday.name}
+                    </span>
+                  ) : isFriday ? (
+                    <span className="mt-1 inline-flex items-center justify-center px-1.5 py-0.5 rounded text-[8px] sm:text-[9px] font-mono text-slate-400 dark:text-slate-500 bg-slate-200/40 dark:bg-slate-800/30 truncate max-w-full leading-none select-none">
+                      Weekend
+                    </span>
+                  ) : null}
                 </div>
               );
             })}
@@ -1877,45 +1978,52 @@ export function TimetableGrid({
                     ))}
                   </div>
 
-                  {isFriday ? (
-                    /* Subtle Friday Weekend Column Content */
-                    <div className="absolute inset-0 flex flex-col items-center justify-center p-3 pointer-events-none select-none">
-                      <div className="inline-flex flex-col items-center gap-1 rounded-2xl border border-slate-200/60 bg-slate-100/60 dark:border-slate-800/60 dark:bg-slate-900/40 px-3 py-2 text-center shadow-2xs backdrop-blur-xs">
-                        <span className="text-[10px] font-mono font-semibold text-slate-400 dark:text-slate-500 uppercase tracking-wider">
-                          Weekend
-                        </span>
-                        <span className="text-[9.5px] font-mono text-slate-400/80 dark:text-slate-500/80">
-                          No classes
-                        </span>
-                      </div>
-                    </div>
-                  ) : holiday ? (
-                    /* Department Holiday Column Content */
-                    <div className="absolute inset-0 flex flex-col items-center justify-center p-3 pointer-events-none select-none">
-                      <div className="inline-flex flex-col items-center gap-1.5 rounded-2xl border border-amber-300/60 bg-amber-50/80 dark:border-amber-500/30 dark:bg-amber-950/30 px-3.5 py-3 text-center shadow-xs backdrop-blur-xs max-w-[92%]">
-                        <span className="text-[10px] font-mono font-bold text-amber-700 dark:text-amber-300 uppercase tracking-wider">
-                          Holiday
-                        </span>
-                        <span className="text-xs font-bold text-amber-900 dark:text-amber-100 leading-snug">
-                          {holiday.name}
-                        </span>
-                        <span className="text-[9.5px] font-mono font-medium text-amber-700/80 dark:text-amber-300/80">
-                          University Closed
-                        </span>
-                      </div>
-                    </div>
-                  ) : (
-                    /* Floating Event Blocks (Google Calendar Style) + Shared Free Time Highlights */
-                    <div className="absolute inset-0">
-                    {/* Off-Day Status: When a day has no classes */}
-                    {positionedEvents.length === 0 && dayOffGridOverrides.length === 0 && (
-                      <div className="absolute inset-0 flex items-center justify-center p-2 pointer-events-none z-10">
-                        <span className="inline-flex items-center gap-1.5 rounded-xl border border-slate-200/80 bg-slate-100/80 dark:border-slate-800/80 dark:bg-slate-900/70 px-2.5 py-1 text-[11px] font-mono font-medium text-slate-500 dark:text-slate-400 shadow-2xs">
-                          <span className="h-1.5 w-1.5 rounded-full bg-slate-400 dark:bg-slate-500 shrink-0" />
-                          <span>No classes</span>
+                  {/* Floating Event Blocks (Google Calendar Style) + Shared Free Time Highlights */}
+                  <div className="absolute inset-0">
+                    {/* Subtle campus closed watermark for holidays without scheduled overrides */}
+                    {holiday && positionedEvents.length === 0 && dayOffGridOverrides.length === 0 && (
+                      <div className="absolute top-4 inset-x-1 text-center pointer-events-none select-none z-0">
+                        <span className="text-[9px] font-mono font-bold text-amber-600/40 dark:text-amber-400/30 uppercase tracking-widest">
+                          Campus Closed
                         </span>
                       </div>
                     )}
+
+                    {/* Midterm Exam Week subtle indicator when no exam is scheduled for this section today */}
+                    {!holiday && isMidtermExamPeriod(d.isoDate) && positionedEvents.length === 0 && dayOffGridOverrides.length === 0 && (
+                      <div className="absolute top-4 inset-x-1 text-center pointer-events-none select-none z-0">
+                        <span className="text-[9px] font-mono font-bold text-blue-600/50 dark:text-blue-400/40 uppercase tracking-wider block">
+                          No Exam Today
+                        </span>
+                        <span className="text-[8px] font-mono text-blue-500/40 dark:text-blue-400/30">
+                          Midterm Week
+                        </span>
+                      </div>
+                    )}
+
+                    {/* Shared Free Time Highlights (Option 1: Solid green with zero text, hover tooltip for details) */}
+                    {compareState?.active && compareState.showFreeTimeHighlight && (sharedFreeSlotsMap?.[d.dayKey as DayOfWeek] || []).map((fs, fIdx) => {
+                      const { topPercent, heightPercent } = getTimelinePercentForInterval(fs.startMinutes, fs.endMinutes);
+                      const durationHours = Math.round((fs.durationMinutes / 60) * 10) / 10;
+
+                      return (
+                        <div
+                          key={`free-${d.globalDayIndex}-${fIdx}`}
+                          title={`Shared Free Time: ${fs.formattedRange} (${durationHours}h)`}
+                          className="absolute rounded-lg border border-emerald-700/20 bg-emerald-600 dark:border-emerald-500/30 dark:bg-emerald-600 z-0 flex items-center justify-center p-1 pointer-events-auto cursor-default transition-all shadow-xs"
+                          style={{
+                            top: `calc(${topPercent}% + 2px)`,
+                            height: `calc(${heightPercent}% - 4px)`,
+                            left: '2px',
+                            right: '2px',
+                          }}
+                        >
+                          <span className="font-mono font-bold text-[9.5px] sm:text-[10px] text-white tracking-tight select-none">
+                            {durationHours}h
+                          </span>
+                        </div>
+                      );
+                    })}
 
                     {/* Off-Grid Event Card in Matrix Column (e.g. Evening / Online classes starting >= 18:00 or untimed) */}
                     {dayOffGridOverrides.length > 0 && (
@@ -2010,21 +2118,34 @@ export function TimetableGrid({
                                 })
                               ) : (
                                 <>
-                                  <div className="flex items-center justify-between gap-1 min-w-0">
-                                    <span className="font-bold text-xs tracking-tight truncate text-sky-950 dark:text-sky-100 leading-tight">
+                                  <div className="space-y-0.5 min-w-0 relative z-10">
+                                    <div className="flex items-center gap-1 flex-wrap">
+                                      <span className="text-[8.5px] font-mono font-bold uppercase px-1 py-0.2 rounded bg-sky-400 text-sky-950 shrink-0 leading-none shadow-2xs">
+                                        {ev.type === 'ct' ? 'CT' : ev.type === 'online' ? 'ONLINE' : (ev.type?.toUpperCase() || 'EVENT')}
+                                      </span>
+                                    </div>
+                                    <div className="font-ui font-semibold text-[11px] sm:text-xs tracking-tight leading-[1.25] break-normal overflow-hidden line-clamp-2 text-sky-950 dark:text-sky-100">
                                       {shortTitle}
-                                    </span>
-                                    <span className="text-[9px] font-mono font-bold uppercase px-1.5 py-0.5 rounded bg-sky-400 text-sky-950 shrink-0">
-                                      {ev.type === 'ct' ? 'CT' : ev.type === 'online' ? 'ONLINE' : (ev.type?.toUpperCase() || 'EVENT')}
-                                    </span>
+                                    </div>
                                   </div>
-                                  <div className="flex items-center justify-between text-[10px] font-mono leading-tight pt-0.5 border-t border-sky-200/60 dark:border-sky-800/60 text-sky-700 dark:text-sky-300 min-w-0">
-                                    <span className="font-bold truncate flex items-center gap-0.5 min-w-0">
-                                      <MapPin className="h-2.5 w-2.5 shrink-0 opacity-80" />
-                                      <span className="truncate">{ev.room || 'Online'}</span>
-                                    </span>
+                                  <div className="mt-auto pt-0.5 border-t border-sky-200/60 dark:border-sky-800/60 flex items-center justify-between gap-1 leading-none text-sky-800 dark:text-sky-300 min-w-0 relative z-10">
+                                    {(() => {
+                                      const { prefix: roomPrefix, number: roomNumber } = parseRoomParts(ev.room);
+                                      return (
+                                        <div className="flex flex-wrap items-baseline gap-x-1 font-ui leading-none min-w-0">
+                                          {roomPrefix && (
+                                            <span className="text-[9px] sm:text-[9.5px] font-normal opacity-70 tracking-tight shrink-0 select-none">
+                                              {roomPrefix}
+                                            </span>
+                                          )}
+                                          <span className="text-[10px] sm:text-[10.5px] font-normal tracking-tight whitespace-nowrap">
+                                            {roomNumber}
+                                          </span>
+                                        </div>
+                                      );
+                                    })()}
                                     {ev.startTime && (
-                                      <span className="font-semibold shrink-0">
+                                      <span className="font-ui font-normal shrink-0 text-[10px] opacity-80">
                                         {formatTime12(ev.startTime)}
                                       </span>
                                     )}
@@ -2036,7 +2157,6 @@ export function TimetableGrid({
                         })}
                       </>
                     )}
-
 
                     {positionedEvents.map((pe) => {
                       const c = pe.event;
@@ -2139,32 +2259,43 @@ export function TimetableGrid({
                                     }}
                                   />
                                 )}
-                                <div className="flex items-center justify-between gap-1 min-w-0 relative z-10">
-                                  <div className="flex items-center gap-1 min-w-0 truncate">
-                                    <span className={`font-mono font-bold text-[9px] px-1 py-0.2 rounded shrink-0 ${badgeStyle}`}>
+                                <div className="space-y-0.5 min-w-0 relative z-10">
+                                  <div className="flex items-center gap-0.5 flex-wrap">
+                                    <span className={`font-mono font-bold text-[8.5px] px-1 py-0.2 rounded shrink-0 leading-none ${badgeStyle}`}>
                                       {pe.targetBadge}
                                     </span>
                                     {(() => {
                                       const labBadge = getLabSubsectionBadge(c, section);
                                       if (!labBadge) return null;
                                       return (
-                                        <span className="font-mono font-bold text-[9px] px-1 py-0.2 rounded shrink-0 bg-amber-400 text-amber-950 border border-amber-500/60 shadow-2xs">
+                                        <span className="font-mono font-bold text-[8.5px] px-1 py-0.2 rounded shrink-0 leading-none bg-amber-400 text-amber-950 border border-amber-500/60 shadow-2xs">
                                           {labBadge}
                                         </span>
                                       );
                                     })()}
-                                    <span className="font-bold text-[10px] sm:text-[11px] truncate opacity-90">
-                                      {getCourseShortTitle(cleanCode, c.courseTitle, c.type === 'Lab')}
-                                    </span>
+                                  </div>
+                                  <div className="font-ui font-semibold text-[10.5px] sm:text-[11.5px] leading-[1.25] break-normal overflow-hidden line-clamp-2 opacity-90">
+                                    <span>{getCourseShortTitle(cleanCode, c.courseTitle, c.type === 'Lab')}</span>
                                   </div>
                                 </div>
-                                <div className="flex items-center justify-between text-[9px] sm:text-[9.5px] font-mono opacity-75 truncate pt-0.5 border-t border-black/10 dark:border-white/10 relative z-10">
-                                  <span className="truncate font-semibold flex items-center gap-0.5">
-                                    <MapPin className="h-2 w-2 shrink-0 opacity-70" />
-                                    <span>{c.room.split('(')[0].trim()}</span>
-                                  </span>
+                                <div className="mt-auto pt-0.5 border-t border-black/10 dark:border-white/10 flex items-center justify-between gap-1 leading-none opacity-90 relative z-10 min-w-0">
+                                  {(() => {
+                                    const { prefix: roomPrefix, number: roomNumber } = parseRoomParts(c.room);
+                                    return (
+                                      <div className="flex flex-wrap items-baseline gap-x-1 font-ui leading-none min-w-0">
+                                        {roomPrefix && (
+                                          <span className="text-[9px] sm:text-[9.5px] font-normal opacity-70 tracking-tight shrink-0 select-none">
+                                            {roomPrefix}
+                                          </span>
+                                        )}
+                                        <span className="text-[10px] sm:text-[10.5px] font-normal tracking-tight whitespace-nowrap">
+                                          {roomNumber}
+                                        </span>
+                                      </div>
+                                    );
+                                  })()}
                                   {c.teacherCode && (
-                                    <span className="truncate font-semibold">{c.teacherCode}</span>
+                                    <span className="hidden sm:inline-block font-mono font-normal opacity-75 shrink-0 text-[9px]">{c.teacherCode}</span>
                                   )}
                                 </div>
                               </>
@@ -2288,26 +2419,65 @@ export function TimetableGrid({
                                   />
                                 )}
 
-                                <div className="space-y-0.5 overflow-hidden min-w-0 relative z-10">
-                                  <div className="flex items-center justify-between gap-1 min-w-0">
-                                    <span className="font-bold text-xs truncate leading-tight">
-                                      {getCourseShortTitle(cleanCode, c.courseTitle, c.type === 'Lab')}
-                                    </span>
-                                    <span className={`text-[9px] font-mono font-bold uppercase px-1.5 py-0.5 rounded shrink-0 ${badgeClass}`}>
+                                <div className="space-y-0.5 min-w-0 relative z-10">
+                                  {/* Micro-badge row */}
+                                  <div className="flex items-center gap-1 flex-wrap">
+                                    <span className={`text-[8.5px] font-mono font-bold uppercase px-1 py-0.2 rounded shrink-0 leading-none shadow-2xs ${badgeClass}`}>
                                       {badgeLabel}
                                     </span>
+                                    {isComparing && pe.targetBadge && (
+                                      <span className="text-[8.5px] font-mono font-bold px-1 py-0.2 rounded shrink-0 leading-none bg-slate-200 text-slate-800 dark:bg-slate-700 dark:text-slate-200">
+                                        {pe.targetBadge}
+                                      </span>
+                                    )}
                                   </div>
+
+                                  {/* Course Title */}
+                                  <div className="font-ui font-semibold tracking-tight text-[11px] sm:text-xs leading-[1.25] break-normal overflow-hidden line-clamp-2">
+                                    <span>{getCourseShortTitle(cleanCode, c.courseTitle, c.type === 'Lab')}</span>
+                                  </div>
+
                                   {ev.title && !ev.title.toLowerCase().includes(ev.type?.toLowerCase() || '') && (
-                                    <div className="text-[10.5px] font-medium leading-snug truncate opacity-90">
+                                    <div className="font-ui text-[9.5px] font-medium leading-tight break-normal opacity-90 line-clamp-1">
                                       {ev.title}
                                     </div>
                                   )}
                                 </div>
-                                <div className="pt-0.5 border-t border-black/10 dark:border-white/10 flex items-center justify-between text-[10px] font-mono leading-tight min-w-0 relative z-10">
-                                  <span className="flex items-center gap-0.5 font-bold truncate">
-                                    <MapPin className="h-2.5 w-2.5 shrink-0 opacity-80" />
-                                    <span className="truncate">{ev.room || 'TBD'}</span>
-                                  </span>
+
+                                {/* Bottom Row: Room Number & Teacher Button */}
+                                <div className="mt-auto pt-0.5 border-t border-black/15 dark:border-white/15 flex items-center justify-between gap-1 leading-none min-w-0 relative z-10">
+                                  {(() => {
+                                    const { prefix: roomPrefix, number: roomNumber } = parseRoomParts(ev.room || c.room);
+                                    return (
+                                      <div className="flex flex-wrap items-baseline gap-x-1 font-ui leading-none min-w-0">
+                                        {roomPrefix && (
+                                          <span className="text-[9px] sm:text-[9.5px] font-normal opacity-70 tracking-tight shrink-0 select-none">
+                                            {roomPrefix}
+                                          </span>
+                                        )}
+                                        <span className="text-[10px] sm:text-[10.5px] font-normal tracking-tight whitespace-nowrap">
+                                          {roomNumber}
+                                        </span>
+                                      </div>
+                                    );
+                                  })()}
+                                  {c.teacherCode && (
+                                    <button
+                                      type="button"
+                                      onClick={(e) => {
+                                        e.stopPropagation();
+                                        const rect = e.currentTarget.getBoundingClientRect();
+                                        onOpenFacultyInfo?.(c.teacherCode, {
+                                          x: Math.round(rect.left + rect.width / 2),
+                                          y: Math.round(rect.top + rect.height / 2),
+                                        });
+                                      }}
+                                      title={`Click to view info for ${c.teacherCode}`}
+                                      className="hidden sm:inline-block shrink-0 rounded-md px-1.5 py-0.5 font-ui font-medium text-[9px] sm:text-[9.5px] leading-none border transition-all cursor-pointer bg-white/15 hover:bg-white/25 text-white/90 hover:text-white border-white/20 active:scale-95"
+                                    >
+                                      {c.teacherCode}
+                                    </button>
+                                  )}
                                 </div>
                               </>
                             )}
@@ -2321,20 +2491,52 @@ export function TimetableGrid({
                       const labSubBadge = getLabSubsectionBadge(c, section);
 
                       // Determine card theme:
-                      // Previous routine card: GREEN
-                      // New routine card (Routinly): BLUE
-                      // Both are equally emphasized with vibrant colors, solid borders, and full readability!
-                      const isNewVersion = c.versionType === 'new' || pe.isPrimaryTarget;
-                      const cardTheme = isNewVersion
-                        ? 'bg-blue-600 hover:bg-blue-700 text-white dark:bg-blue-600 dark:hover:bg-blue-500 dark:text-white border border-blue-500/50 shadow-xs'
-                        : 'bg-emerald-600 hover:bg-emerald-700 text-white dark:bg-emerald-600 dark:hover:bg-emerald-500 dark:text-white border border-emerald-500/50 shadow-xs';
-                      const buttonBadgeClass =
-                        'bg-black/25 hover:bg-black/40 text-white border-white/20 dark:bg-black/25 dark:hover:bg-black/40 dark:text-white dark:border-white/20';
+                      // If comparing, BOTH sections are washed out with in-theme dark/muted neutral distinctions; only Free Time is solid primary emerald!
+                      // When not comparing, uses the full solid emerald Google Calendar theme.
+                      let cardTheme =
+                        'bg-emerald-600 hover:bg-emerald-500 text-white dark:bg-emerald-600 dark:hover:bg-emerald-500 dark:text-white border border-emerald-700/20 dark:border-emerald-500/30 shadow-xs';
+                      let buttonBadgeClass =
+                        'bg-white/15 hover:bg-white/25 text-white/95 border-white/20 hover:border-white/30 backdrop-blur-xs';
+                      let subsectionBadgeClass =
+                        'bg-black/25 text-white border-white/20 dark:bg-black/30 dark:text-white dark:border-white/20';
+
+                      if (isDualRoutine) {
+                        const isNew = c.versionType === 'new';
+                        if (isNew) {
+                          cardTheme = 'bg-blue-600 hover:bg-blue-500 text-white dark:bg-blue-600 dark:hover:bg-blue-500 dark:text-white border border-blue-700/20 dark:border-blue-500/30 shadow-xs';
+                          buttonBadgeClass = 'bg-white/15 hover:bg-white/25 text-white/95 border-white/20 hover:border-white/30 backdrop-blur-xs';
+                          subsectionBadgeClass = 'bg-black/25 text-white border-white/20 dark:bg-black/30 dark:text-white dark:border-white/20';
+                        } else {
+                          cardTheme = 'bg-emerald-600 hover:bg-emerald-500 text-white dark:bg-emerald-600 dark:hover:bg-emerald-500 dark:text-white border border-emerald-700/20 dark:border-emerald-500/30 shadow-xs';
+                          buttonBadgeClass = 'bg-white/15 hover:bg-white/25 text-white/95 border-white/20 hover:border-white/30 backdrop-blur-xs';
+                          subsectionBadgeClass = 'bg-black/25 text-white border-white/20 dark:bg-black/30 dark:text-white dark:border-white/20';
+                        }
+                      } else if (isComparing) {
+                        if (pe.isPrimaryTarget) {
+                          // Entity 1: Clean washed out slate card with solid border (dark in dark mode!)
+                          cardTheme =
+                            'bg-slate-200 hover:bg-slate-300 text-slate-800 dark:bg-slate-800 dark:hover:bg-slate-700 dark:text-slate-200 border border-slate-300 dark:border-slate-700 shadow-2xs';
+                          buttonBadgeClass =
+                            'bg-black/10 hover:bg-black/15 text-slate-800 border-black/15 dark:bg-white/10 dark:hover:bg-white/20 dark:text-slate-200 dark:border-white/20 shadow-2xs';
+                          subsectionBadgeClass =
+                            'bg-black/10 dark:bg-black/35 text-current border-black/15 dark:border-white/15';
+                        } else {
+                          // Entity 2: Clean washed out light green card with solid border (dark muted green in dark mode!)
+                          cardTheme =
+                            'bg-emerald-100 hover:bg-emerald-200 text-emerald-950 dark:bg-emerald-950 dark:hover:bg-emerald-900 dark:text-emerald-200 border border-emerald-400/70 dark:border-emerald-700/80 shadow-2xs';
+                          buttonBadgeClass =
+                            'bg-emerald-800/15 hover:bg-emerald-800/25 text-emerald-950 border-emerald-800/20 dark:bg-emerald-300/15 dark:hover:bg-emerald-300/25 dark:text-emerald-200 dark:border-emerald-300/25 shadow-2xs';
+                          subsectionBadgeClass =
+                            'bg-black/10 dark:bg-black/35 text-current border-black/15 dark:border-white/15';
+                        }
+                      }
 
                       const isLiveNow =
                         isToday &&
                         currentDhakaTime.totalMinutes >= pe.startMinutes &&
                         currentDhakaTime.totalMinutes < pe.endMinutes;
+
+
 
                       const cardLineTopPercent = isLiveNow
                         ? Math.max(
@@ -2370,6 +2572,12 @@ export function TimetableGrid({
                         if (ev.startTime && c.startTime && ev.startTime !== c.startTime) return false;
                         return true;
                       });
+
+                      if (cardOverride?.type === 'exam' || c.id.startsWith('midterm-')) {
+                        cardTheme = 'bg-blue-600 hover:bg-blue-500 text-white dark:bg-blue-600 dark:hover:bg-blue-500 dark:text-white border border-blue-700/20 dark:border-blue-500/30 shadow-xs';
+                        buttonBadgeClass = 'bg-white/15 hover:bg-white/25 text-white/95 border-white/20 hover:border-white/30 backdrop-blur-xs';
+                        subsectionBadgeClass = 'bg-black/25 text-white border-white/20 dark:bg-black/30 dark:text-white dark:border-white/20';
+                      }
 
                       return (
                         <div
@@ -2438,121 +2646,146 @@ export function TimetableGrid({
                                 />
                               )}
 
-                              <div className="space-y-0.5 overflow-hidden min-w-0 relative z-10">
-                                {/* Line 1: Target Badge (in compare) + Course Title + Optional Code + Subsection Badge */}
-                                <div className="flex items-center justify-between gap-1 min-w-0">
-                                  <div className="flex items-center gap-1 min-w-0 truncate">
-                                    <span
-                                      className="shrink-0 rounded px-1.5 py-0.2 text-[9px] font-mono font-bold bg-black/25 text-white border border-white/20"
-                                    >
-                                      {isNewVersion ? 'New' : 'Prev'}
-                                    </span>
-                                    {isLab && (
-                                      <FlaskConical className="h-3 w-3 shrink-0 text-white/80" />
-                                    )}
-                                    <span className={`font-bold tracking-tight text-xs truncate leading-tight ${cardOverride?.type === 'cancelled' ? 'line-through opacity-75' : ''}`}>
-                                      {shortTitle}
-                                    </span>
-                                  </div>
-
-                                  {/* Subsection badge & Event Override Pill (e.g. Quiz / Cancelled / Online) */}
-                                  <div className="flex items-center gap-1 shrink-0 relative z-10">
-                                    {cardOverride && cardOverride.type !== 'regular' && (
-                                      <span
-                                        title={`${cardOverride.title}${cardOverride.description ? `: ${cardOverride.description}` : ''}`}
-                                        className={`shrink-0 rounded px-1.5 py-0.5 text-[9px] font-bold font-mono uppercase shadow-2xs relative z-10 ${
-                                          cardOverride.type === 'online'
-                                            ? 'bg-sky-400 text-sky-950 border border-sky-500/60'
+                              <div className="flex flex-col h-full justify-between gap-1 min-w-0 relative z-10">
+                                <div className="space-y-0.5 min-w-0">
+                                  {/* Micro-badges Row (Override Quiz / CT / Online / Cancelled, Lab Subsection, Compare Target) */}
+                                  {((cardOverride && cardOverride.type !== 'regular') || labSubBadge || (isComparing && pe.targetBadge)) && (
+                                    <div className="flex items-center gap-0.5 flex-wrap">
+                                      {isComparing && pe.targetBadge && (
+                                        <span
+                                          className={`shrink-0 rounded px-1 py-0.2 text-[8.5px] font-mono font-bold leading-none ${
+                                            pe.isPrimaryTarget
+                                              ? 'bg-slate-300 text-slate-800 dark:bg-slate-700 dark:text-slate-200'
+                                              : 'bg-emerald-200/70 text-emerald-950 dark:bg-emerald-900/70 dark:text-emerald-200 border border-emerald-400 dark:border-emerald-700'
+                                          }`}
+                                        >
+                                          {pe.targetBadge}
+                                        </span>
+                                      )}
+                                      {cardOverride && cardOverride.type !== 'regular' && (
+                                        <span
+                                          title={`${cardOverride.title}${cardOverride.description ? `: ${cardOverride.description}` : ''}`}
+                                          className={`shrink-0 rounded px-1 py-0.2 text-[8.5px] font-bold font-mono uppercase shadow-2xs leading-none relative z-10 ${
+                                            cardOverride.type === 'online'
+                                              ? 'bg-sky-400 text-sky-950 border border-sky-500/60'
+                                              : cardOverride.type === 'cancelled'
+                                              ? 'bg-rose-400 text-rose-950 border border-rose-500/60'
+                                              : 'bg-amber-400 text-amber-950 border border-amber-500/60'
+                                          }`}
+                                        >
+                                          {cardOverride.type === 'ct'
+                                            ? 'CT'
+                                            : cardOverride.type === 'online'
+                                            ? 'ONLINE'
                                             : cardOverride.type === 'cancelled'
-                                            ? 'bg-rose-400 text-rose-950 border border-rose-500/60'
-                                            : 'bg-amber-400 text-amber-950 border border-amber-500/60'
-                                        }`}
-                                      >
-                                        {cardOverride.type === 'ct'
-                                          ? 'CT'
-                                          : cardOverride.type === 'online'
-                                          ? 'ONLINE'
-                                          : cardOverride.type === 'cancelled'
-                                          ? 'CANCELLED'
-                                          : (cardOverride.type?.toUpperCase() || 'QUIZ')}
-                                      </span>
-                                    )}
-                                    {labSubBadge && (
-                                      <span
-                                        title={`Lab Subsection ${labSubBadge}`}
-                                        className="shrink-0 rounded px-1.5 py-0.2 text-[9px] font-bold font-mono border relative z-10 bg-amber-400 text-amber-950 border-amber-500/60 dark:bg-amber-400 dark:text-amber-950 shadow-2xs"
-                                      >
-                                        {labSubBadge}
-                                      </span>
-                                    )}
+                                            ? 'CANCELLED'
+                                            : cardOverride.type === 'exam'
+                                            ? 'MIDTERM'
+                                            : (cardOverride.type?.toUpperCase() || 'QUIZ')}
+                                        </span>
+                                      )}
+                                      {labSubBadge && (
+                                        <span
+                                          title={`Lab Subsection ${labSubBadge}`}
+                                          className="shrink-0 rounded px-1 py-0.2 text-[8.5px] font-bold font-mono border leading-none relative z-10 bg-amber-400 text-amber-950 border-amber-500/60 dark:bg-amber-400 dark:text-amber-950 shadow-2xs"
+                                        >
+                                          {labSubBadge.replace('Lab ', 'L')}
+                                        </span>
+                                      )}
+                                    </div>
+                                  )}
+
+                                  {/* Course Title (Proper font, legible, clean line height, no mid-word breaking) */}
+                                  <div className={`font-ui font-semibold tracking-tight text-[11px] sm:text-xs leading-[1.25] break-normal overflow-hidden line-clamp-2 ${cardOverride?.type === 'cancelled' ? 'line-through opacity-75' : ''}`}>
+                                    <span>{shortTitle}</span>
                                   </div>
                                 </div>
-                              </div>
 
-                              {/* Line 3: Room & Teacher/Section Bottom Row */}
-                              <div className={`pt-1 border-t flex items-center justify-between text-[10px] sm:text-[10.5px] font-mono leading-tight gap-1 min-w-0 relative z-10 ${
-                                isComparing
-                                  ? pe.isPrimaryTarget
-                                    ? 'border-slate-300/70 dark:border-slate-700/70 text-slate-600 dark:text-slate-300'
-                                    : 'border-emerald-300/70 dark:border-emerald-800/70 text-emerald-800 dark:text-emerald-300'
-                                  : 'border-black/15 dark:border-black/20'
-                              }`}>
-                                <span className="flex items-center gap-0.5 font-bold truncate min-w-0">
-                                  <MapPin className="h-2.5 w-2.5 shrink-0 opacity-80" />
-                                  <span className="truncate">{c.room.split('(')[0].trim()}</span>
-                                </span>
-                                {(() => {
-                                  const cardTarget = isComparing
-                                    ? (pe.isPrimaryTarget ? compareState?.primaryTarget : compareState?.secondaryTarget)
-                                    : activeTarget;
-                                  const isCardFromFaculty = cardTarget?.type === 'faculty';
+                                {/* Bottom Row: Room Number (Horizontal KT- and number, thinner font) & Teacher Button */}
+                                <div className={`mt-auto pt-0.5 border-t flex items-center justify-between gap-1 leading-none min-w-0 relative z-10 ${
+                                  isComparing
+                                    ? pe.isPrimaryTarget
+                                      ? 'border-slate-300/70 dark:border-slate-700/70 text-slate-700 dark:text-slate-300'
+                                      : 'border-emerald-300/70 dark:border-emerald-800/70 text-emerald-900 dark:text-emerald-300'
+                                    : 'border-white/15 dark:border-white/15 text-white'
+                                }`}>
+                                  {/* Room Number - Separated horizontally with thinner font to fit cleanly */}
+                                  {(() => {
+                                    const { prefix: roomPrefix, number: roomNumber } = parseRoomParts(c.room);
+                                    return (
+                                      <div className="flex flex-wrap items-baseline gap-x-1 font-ui leading-none min-w-0">
+                                        {roomPrefix && (
+                                          <span className="text-[9px] sm:text-[9.5px] font-normal opacity-70 tracking-tight shrink-0 select-none">
+                                            {roomPrefix}
+                                          </span>
+                                        )}
+                                        <span className="text-[10px] sm:text-[10.5px] font-normal tracking-tight whitespace-nowrap">
+                                          {roomNumber}
+                                        </span>
+                                      </div>
+                                    );
+                                  })()}
 
-                                  if (isCardFromFaculty) {
-                                    const sectionBadge = (() => {
-                                      const sec = c.sectionId && c.sectionId !== 'Common'
-                                        ? (c.subSection && !c.sectionId.endsWith(c.subSection) ? `${c.sectionId}${c.subSection}` : c.sectionId)
-                                        : (c.batch && c.section ? `${c.batch}_${c.section}` : (c.batch && c.batch !== 'Batch' ? c.batch : null));
-                                      return sec || null;
-                                    })();
+                                  {/* Teacher or Section Button (Dropped on mobile as requested, visible on tablet/desktop) */}
+                                  {(() => {
+                                    const cardTarget = isComparing
+                                      ? (pe.isPrimaryTarget ? compareState?.primaryTarget : compareState?.secondaryTarget)
+                                      : activeTarget;
+                                    const isCardFromFaculty = cardTarget?.type === 'faculty';
 
-                                    const sectionTargetId = (() => {
-                                      if (c.sectionId && c.sectionId !== 'Common') return c.sectionId;
-                                      if (c.batch && c.section) return `${c.batch}_${c.section}`;
-                                      if (c.batch && c.batch !== 'Batch') return c.batch.replace(/([A-Za-z]+)[12]$/, '$1');
-                                      return null;
-                                    })();
+                                    if (isCardFromFaculty) {
+                                      const sectionBadge = (() => {
+                                        const sec = c.sectionId && c.sectionId !== 'Common'
+                                          ? (c.subSection && !c.sectionId.endsWith(c.subSection) ? `${c.sectionId}${c.subSection}` : c.sectionId)
+                                          : (c.batch && c.section ? `${c.batch}_${c.section}` : (c.batch && c.batch !== 'Batch' ? c.batch : null));
+                                        return sec || null;
+                                      })();
 
-                                    if (!sectionBadge) return null;
+                                      const sectionTargetId = (() => {
+                                        if (c.sectionId && c.sectionId !== 'Common') return c.sectionId;
+                                        if (c.batch && c.section) return `${c.batch}_${c.section}`;
+                                        if (c.batch && c.batch !== 'Batch') return c.batch.replace(/([A-Za-z]+)[12]$/, '$1');
+                                        return null;
+                                      })();
+
+                                      if (!sectionBadge) return null;
+
+                                      return (
+                                        <button
+                                          type="button"
+                                          onClick={(e) => {
+                                            e.stopPropagation();
+                                            if (sectionTargetId) onOpenSectionInfo?.(sectionTargetId);
+                                          }}
+                                          title={`Click to view info for ${sectionBadge}`}
+                                          className={`hidden sm:inline-block shrink-0 rounded-md px-1.5 py-0.5 font-ui font-medium text-[9px] sm:text-[9.5px] leading-none border transition-all cursor-pointer relative z-10 active:scale-95 ${buttonBadgeClass}`}
+                                        >
+                                          {sectionBadge}
+                                        </button>
+                                      );
+                                    }
+
+                                    if (!c.teacherCode) return null;
 
                                     return (
                                       <button
                                         type="button"
                                         onClick={(e) => {
                                           e.stopPropagation();
-                                          if (sectionTargetId) onOpenSectionInfo?.(sectionTargetId);
+                                          const rect = e.currentTarget.getBoundingClientRect();
+                                          onOpenFacultyInfo?.(c.teacherCode, {
+                                            x: Math.round(rect.left + rect.width / 2),
+                                            y: Math.round(rect.top + rect.height / 2),
+                                          });
                                         }}
-                                        title={`Click to view info for ${sectionBadge}`}
-                                        className={`shrink-0 rounded px-1 py-0.2 font-bold text-[9.5px] border transition-all cursor-pointer relative z-10 ${buttonBadgeClass}`}
+                                        title={`Click to view info for ${c.teacherCode}`}
+                                        className={`hidden sm:inline-block shrink-0 rounded-md px-1.5 py-0.5 font-ui font-medium text-[9px] sm:text-[9.5px] leading-none border transition-all cursor-pointer relative z-10 active:scale-95 ${buttonBadgeClass}`}
                                       >
-                                        {sectionBadge}
+                                        {c.teacherCode}
                                       </button>
                                     );
-                                  }
-
-                                  return (
-                                    <button
-                                      type="button"
-                                      onClick={(e) => {
-                                        e.stopPropagation();
-                                        onOpenFacultyInfo?.(c.teacherCode);
-                                      }}
-                                      title={`Click to view info for ${c.teacherCode}`}
-                                      className={`shrink-0 rounded px-1 py-0.2 font-bold text-[9.5px] border transition-all cursor-pointer relative z-10 ${buttonBadgeClass}`}
-                                    >
-                                      {c.teacherCode}
-                                    </button>
-                                  );
-                                })()}
+                                  })()}
+                                </div>
                               </div>
                             </>
                           )}
@@ -2560,7 +2793,6 @@ export function TimetableGrid({
                       );
                     })}
                   </div>
-                )}
 
                   {/* Current Time Indicator across Today's column */}
                   {isToday && currentTimeTopPercent !== null && (
@@ -2589,6 +2821,433 @@ export function TimetableGrid({
         </div>
       </div>
 
+      {/* ============================================================== */}
+      {/* 2. Continuous Agenda View (Multi-Day Upcoming Stream) */}
+      {/* ============================================================== */}
+      <div className={`space-y-4 max-w-2xl mx-auto print:hidden ${effectiveViewMode === 'agenda' ? 'block' : 'hidden'}`}>
+        {/* Continuous Stream of Upcoming Days - Google Calendar Schedule Widget Layout */}
+        <div className="space-y-4">
+          {upcomingDays.map((d) => {
+            // Compare mode is ONLY for week view, not on agenda mode.
+            const targetBadge = activeTarget ? getTargetLabel(activeTarget).badge : (section?.id || 'Class');
+
+            const holiday = getDepartmentHoliday(d.isoDate);
+            const isExamPeriod = isMidtermExamPeriod(d.isoDate);
+
+            const regularClasses = (d.isFriday || holiday || isExamPeriod)
+              ? []
+              : classes.filter((c) => c.dayOfWeek === d.dayKey);
+
+            // Standalone overrides (e.g. online/makeup classes not matching a regular routine slot)
+            const standaloneOverrides = (holiday ? [] : (eventOverrides || [])).filter((ev) => {
+              if (ev.status === 'CANCELLED') return false;
+              if (ev.date) {
+                const matchesIso = d.isoDate && ev.date.trim() === d.isoDate.trim();
+                const dayNum = String(parseInt(ev.date.split('-')[2] || '0', 10));
+                const matchesDayNum = d.dayNumber === dayNum && (!ev.dayOfWeek || d.dayKey === ev.dayOfWeek);
+                if (!matchesIso && !matchesDayNum) return false;
+              } else if (ev.dayOfWeek && ev.dayOfWeek !== d.dayKey) {
+                return false;
+              }
+              const evClean = (ev.courseCode || '').split('(')[0].trim().toUpperCase();
+              const matchesRegular = regularClasses.some((c) => {
+                const cClean = c.courseCode.split('(')[0].trim().toUpperCase();
+                if (cClean !== evClean) return false;
+                if (ev.startTime && c.startTime && ev.startTime !== c.startTime) return false;
+                return true;
+              });
+              return !matchesRegular;
+            });
+
+            const syntheticClasses: RoutineClass[] = standaloneOverrides
+              .filter((ev) => {
+                if (subSection === '1' && (ev.courseCode.includes('O2') || ev.title.includes('O2'))) return false;
+                if (subSection === '2' && (ev.courseCode.includes('O1') || ev.title.includes('O1'))) return false;
+                return true;
+              })
+              .map((ev) => {
+                const isLab = ev.courseCode.toLowerCase().includes('lab') || ev.title.toLowerCase().includes('lab');
+                const subSecMatch = ev.courseCode.match(/O([12])/i) || ev.title.match(/O([12])/i);
+                const evClean = ev.courseCode.split('(')[0].trim().toUpperCase();
+                const matchedClass = classes.find((c) => c.courseCode.split('(')[0].trim().toUpperCase() === evClean);
+                const resolvedTeacher = matchedClass?.teacherCode || 'TBA';
+                const resolvedTitle = matchedClass?.courseTitle || ev.title || ev.courseCode;
+
+                return {
+                  id: ev.id,
+                  batch: section?.batch || '66',
+                  section: section?.sectionLetter || 'O',
+                  sectionId: ev.sectionId,
+                  subSection: subSecMatch ? (subSecMatch[1] as '1' | '2') : null,
+                  courseCode: ev.courseCode,
+                  courseTitle: resolvedTitle,
+                  teacherCode: resolvedTeacher,
+                  room: ev.room || 'Online',
+                  dayOfWeek: d.dayKey as DayOfWeek,
+                  startTime: ev.startTime || '19:00',
+                  endTime: ev.endTime || '20:00',
+                  type: isLab ? 'Lab' : 'Theory',
+                  color: 'indigo',
+                };
+              });
+
+            const dayClassList = [...regularClasses, ...syntheticClasses].sort((a, b) =>
+              a.startTime.localeCompare(b.startTime)
+            );
+
+            // Standalone indicator if today, during class hours, and before the first class of the day
+            const showStandaloneBeforeFirst =
+              d.isToday &&
+              isClassHours &&
+              dayClassList.length > 0 &&
+              currentDhakaTime.totalMinutes < timeToMinutes(dayClassList[0].startTime);
+
+            return (
+              <div
+                key={`agenda-day-${d.dayKey}-${d.formattedDate}`}
+                id={`agenda-day-${d.dayKey}`}
+                className="flex items-start gap-3 scroll-mt-20 pt-1"
+              >
+                {/* Left Date Pillar (Google Calendar Schedule Widget style) */}
+                <div className="w-12 shrink-0 pt-0.5 text-center flex flex-col items-center">
+                  <span
+                    className={`text-[11px] font-mono font-bold uppercase tracking-wider ${
+                      d.isToday ? 'text-emerald-700 dark:text-emerald-400' : 'text-slate-500 dark:text-slate-400'
+                    }`}
+                  >
+                    {d.dayShort}
+                  </span>
+                  <div
+                    className={`mt-0.5 flex items-center justify-center font-bold text-base font-mono ${
+                      d.isToday
+                        ? 'h-9 w-9 rounded-full bg-emerald-600 text-white shadow-xs'
+                        : 'h-9 w-9 text-slate-800 dark:text-slate-200'
+                    }`}
+                  >
+                    {d.dayNumber}
+                  </div>
+                  {d.isToday && (
+                    <span className="mt-1 rounded-full bg-emerald-100 text-emerald-800 dark:bg-emerald-950/80 dark:text-emerald-300 border border-emerald-300/60 dark:border-emerald-700/60 px-1.5 py-0.2 text-[9px] font-mono font-bold tracking-tight">
+                      TODAY
+                    </span>
+                  )}
+                  {d.isFriday && (
+                    <span className="mt-1 rounded-full bg-slate-100 text-slate-700 dark:bg-slate-800 dark:text-slate-300 border border-slate-300/60 dark:border-slate-700/60 px-1 py-0.2 text-[8px] font-mono font-bold tracking-tight">
+                      OFF
+                    </span>
+                  )}
+                  {holiday && (
+                    <span className="mt-1 rounded-full bg-amber-100 text-amber-800 dark:bg-amber-950/80 dark:text-amber-300 border border-amber-300/60 dark:border-amber-700/60 px-1 py-0.2 text-[8px] font-mono font-bold tracking-tight">
+                      HOLIDAY
+                    </span>
+                  )}
+                </div>
+
+                {/* Right Content Column: Stack of Events / Empty Day */}
+                <div className="flex-1 min-w-0 space-y-2 pb-3">
+                  {/* Standalone Current Time Indicator if before first class today */}
+                  {showStandaloneBeforeFirst && (
+                    <div className="flex items-center gap-2.5 py-1.5 pointer-events-none select-none my-0.5">
+                      <div className="flex items-center px-2.5 py-0.5 rounded-full bg-red-500 text-white text-xs font-mono font-bold tracking-tight shrink-0 shadow-xs">
+                        <span>Now {currentDhakaTime.formatted12}</span>
+                      </div>
+                      <div className="h-[2px] flex-1 bg-red-500 dark:bg-red-500/90 rounded-full shadow-xs" />
+                    </div>
+                  )}
+
+                  {holiday ? (
+                    <div className="py-1.5">
+                      <div className="flex items-center justify-between gap-2 rounded-xl border border-amber-300/60 bg-amber-50/70 dark:border-amber-500/30 dark:bg-amber-950/20 px-3.5 py-2 shadow-2xs">
+                        <div className="flex items-center gap-2">
+                          <span className="h-2 w-2 rounded-full bg-amber-500 shrink-0" />
+                          <span className="font-bold text-xs text-amber-900 dark:text-amber-100">
+                            {holiday.name}
+                          </span>
+                        </div>
+                        <span className="text-[10px] font-mono font-semibold text-amber-700 dark:text-amber-300 uppercase tracking-wide">
+                          University Closed
+                        </span>
+                      </div>
+                    </div>
+                  ) : d.isFriday ? (
+                    <div className="py-1 flex items-center">
+                      <span className="inline-flex items-center gap-1.5 rounded-lg border border-slate-200/80 bg-slate-100/70 px-2.5 py-0.5 text-[11px] font-mono font-medium text-slate-500 dark:border-slate-800/80 dark:bg-slate-900/60 dark:text-slate-400">
+                        <span className="h-1.5 w-1.5 rounded-full bg-slate-400 dark:bg-slate-500 shrink-0" />
+                        <span>Weekend</span>
+                      </span>
+                    </div>
+                  ) : dayClassList.length === 0 ? (
+                    <div className="py-1 flex items-center">
+                      {isExamPeriod ? (
+                        <span className="inline-flex items-center gap-1.5 rounded-lg border border-blue-200/80 bg-blue-50/70 px-2.5 py-0.5 text-[11px] font-mono font-medium text-blue-700 dark:border-blue-800/80 dark:bg-blue-950/40 dark:text-blue-300">
+                          <span className="h-1.5 w-1.5 rounded-full bg-blue-500 shrink-0" />
+                          <span>No exam today (Midterm Week)</span>
+                        </span>
+                      ) : (
+                        <span className="inline-flex items-center gap-1.5 rounded-lg border border-slate-200/80 bg-slate-100/70 px-2.5 py-0.5 text-[11px] font-mono font-medium text-slate-500 dark:border-slate-800/80 dark:bg-slate-900/60 dark:text-slate-400">
+                          <span className="h-1.5 w-1.5 rounded-full bg-slate-400 dark:bg-slate-500 shrink-0" />
+                          <span>No classes</span>
+                        </span>
+                      )}
+                    </div>
+                  ) : (
+                    <div className="space-y-2">
+                      {dayClassList.map((classItem, idx) => {
+                        const [startH, startM] = classItem.startTime.split(':').map(Number);
+                        const [endH, endM] = classItem.endTime.split(':').map(Number);
+                        const classStartMins = startH * 60 + startM;
+                        const classEndMins = endH * 60 + endM;
+                        const durationMinutes = classEndMins - classStartMins;
+                        const isDoubleSlot = durationMinutes >= 150;
+                        const isLab = classItem.type === 'Lab';
+                        const cleanCourseCode = classItem.courseCode.split('(')[0].trim();
+                        const shortTitle = getCourseShortTitle(cleanCourseCode, classItem.courseTitle, isLab);
+                        const agendaLabSubBadge = getLabSubsectionBadge(classItem, section);
+
+                        const isLiveNow =
+                          d.isToday &&
+                          currentDhakaTime.totalMinutes >= classStartMins &&
+                          currentDhakaTime.totalMinutes < classEndMins;
+
+                        const classProgress = isLiveNow
+                          ? Math.min(
+                              100,
+                              Math.max(
+                                0,
+                                ((currentDhakaTime.totalMinutes - classStartMins) /
+                                  (classEndMins - classStartMins)) *
+                                  100
+                              )
+                            )
+                          : null;
+
+                        const nextClass = dayClassList[idx + 1];
+                        const nextClassStartMins = nextClass
+                          ? timeToMinutes(nextClass.startTime)
+                          : Infinity;
+
+                        // Check if current minute is after this class and before the next
+                        const showStandaloneAfterThis =
+                          d.isToday &&
+                          isClassHours &&
+                          currentDhakaTime.totalMinutes >= classEndMins &&
+                          currentDhakaTime.totalMinutes < nextClassStartMins;
+
+                        const cardOverride = (eventOverrides || []).find((ev) => {
+                          if (ev.status === 'CANCELLED') return false;
+                          if (ev.date) {
+                            const matchesIso = d.isoDate && ev.date.trim() === d.isoDate.trim();
+                            const dayNum = String(parseInt(ev.date.split('-')[2] || '0', 10));
+                            const matchesDayNum = d.dayNumber === dayNum && (!ev.dayOfWeek || d.dayKey === ev.dayOfWeek);
+                            if (!matchesIso && !matchesDayNum) return false;
+                          } else if (ev.dayOfWeek && ev.dayOfWeek !== d.dayKey) {
+                            return false;
+                          }
+                          const cClean = (cleanCourseCode || classItem.courseCode || '').split('(')[0].trim().toUpperCase();
+                          const evClean = (ev.courseCode || '').split('(')[0].trim().toUpperCase();
+                          if (cClean !== evClean) return false;
+                          if (ev.startTime && classItem.startTime && ev.startTime !== classItem.startTime) return false;
+                          return true;
+                        });
+
+                        // Consistent vibrant styling across light and dark modes
+                        const cardThemeClass = cardOverride?.type === 'cancelled'
+                          ? 'bg-rose-900/90 text-rose-100 dark:bg-rose-950/90 dark:text-rose-100 border border-rose-800/60 shadow-xs'
+                          : cardOverride?.type === 'exam'
+                          ? 'bg-blue-600 text-white dark:bg-blue-600 dark:text-white border border-blue-700/20 dark:border-blue-500/30 shadow-xs'
+                          : cardOverride?.type === 'online'
+                          ? 'bg-sky-600 text-white dark:bg-sky-600 dark:text-white border border-sky-700/25 dark:border-sky-500/30 shadow-xs'
+                          : 'bg-emerald-600 text-white dark:bg-emerald-600 dark:text-white border border-emerald-700/20 dark:border-emerald-500/30 shadow-xs';
+
+                        const cardKey = `agenda-class-${classItem.id}`;
+                        const isAgendaExpanded = expandedCard?.cardKey === cardKey;
+                        const dayLabel = `${d.dayLabel}, ${d.monthLong} ${d.dayNumber}`;
+
+                        return (
+                          <React.Fragment key={cardKey}>
+                            <div
+                              data-expanded-card={isAgendaExpanded ? 'true' : undefined}
+                              aria-label={`${shortTitle} in Room ${classItem.room}, ${formatTime12(classItem.startTime)} to ${formatTime12(classItem.endTime)}`}
+                              onClick={(e) => {
+                                if ((e.target as HTMLElement).closest('button')) return;
+                                if (isAgendaExpanded) {
+                                  setExpandedCard(null);
+                                } else {
+                                  setExpandedCard({
+                                    cardKey,
+                                    classItem: classItem,
+                                    isBlockMode: false,
+                                    targetBadge: targetBadge,
+                                    dayLabel,
+                                    override: cardOverride,
+                                  });
+                                }
+                              }}
+                              className={`transition-all duration-300 ease-out flex flex-col justify-center cursor-pointer ${
+                                isAgendaExpanded
+                                  ? 'relative rounded-2xl p-3.5 sm:p-4 z-30 shadow-xl ring-2 ring-emerald-500/40 bg-white/98 dark:bg-slate-900/98 text-slate-900 dark:text-slate-100 border border-slate-300 dark:border-slate-700 cursor-default space-y-2'
+                                  : `relative overflow-hidden rounded-xl p-2.5 sm:p-3 hover:shadow-md hover:scale-[1.005] ${cardThemeClass} gap-1.5 ${
+                                      isLiveNow ? 'pb-4 sm:pb-4.5' : ''
+                                    }`
+                              }`}
+                            >
+                              {isAgendaExpanded ? (
+                                renderExpandedCardBody({
+                                  item: classItem,
+                                  targetBadge,
+                                  dayLabel,
+                                  isLiveNow,
+                                  override: cardOverride,
+                                })
+                              ) : (
+                                <>
+                                  {/* Class progress bar along bottom edge - inset to prevent clipping on rounded corners */}
+                                  {isLiveNow && classProgress !== null && (
+                                    <div className="absolute bottom-2 left-4 right-4 h-1 bg-black/25 dark:bg-black/35 rounded-full overflow-hidden">
+                                      <div
+                                        className="h-full bg-white dark:bg-emerald-950 transition-all duration-500 rounded-full"
+                                        style={{ width: `${classProgress}%` }}
+                                      />
+                                    </div>
+                                  )}
+
+                                  {/* Line 1: Course Title (Once!), Code & Badges */}
+                                  <div className="flex items-center justify-between gap-2 min-w-0">
+                                    <div className="flex items-center gap-2 min-w-0">
+                                      {isLab && (
+                                        <FlaskConical className="h-3.5 w-3.5 text-emerald-200 dark:text-emerald-900 shrink-0" />
+                                      )}
+                                      <span className={`font-ui font-semibold text-sm tracking-tight truncate ${cardOverride?.type === 'cancelled' ? 'line-through opacity-70' : ''}`}>
+                                        {shortTitle}
+                                      </span>
+                                    </div>
+
+                                    <div className="flex items-center gap-1.5 shrink-0">
+                                      {cardOverride && cardOverride.type !== 'regular' && (
+                                        <span
+                                          title={`${cardOverride.title}${cardOverride.description ? `: ${cardOverride.description}` : ''}`}
+                                          className={`shrink-0 rounded px-1.5 py-0.5 text-[9.5px] font-bold font-mono uppercase shadow-2xs ${
+                                            cardOverride.type === 'online'
+                                              ? 'bg-sky-400 text-sky-950 border border-sky-500/60'
+                                              : cardOverride.type === 'cancelled'
+                                              ? 'bg-rose-400 text-rose-950 border border-rose-500/60'
+                                              : 'bg-amber-400 text-amber-950 border border-amber-500/60'
+                                          }`}
+                                        >
+                                          {cardOverride.type === 'ct'
+                                            ? 'CT'
+                                            : cardOverride.type === 'online'
+                                            ? 'ONLINE'
+                                            : cardOverride.type === 'cancelled'
+                                            ? 'CANCELLED'
+                                            : cardOverride.type === 'exam'
+                                            ? 'MIDTERM'
+                                            : (cardOverride.type?.toUpperCase() || 'QUIZ')}
+                                        </span>
+                                      )}
+                                      {isDoubleSlot && (
+                                        <span className="text-[10px] font-mono font-semibold bg-black/25 text-white border border-white/20 dark:bg-black/15 dark:text-emerald-950 dark:border-black/20 px-1.5 py-0.5 rounded">
+                                          3h Lab
+                                        </span>
+                                      )}
+                                      {agendaLabSubBadge && (
+                                        <span className="text-[10px] font-mono font-bold bg-amber-400 text-amber-950 border border-amber-500/60 px-1.5 py-0.5 rounded shadow-2xs shrink-0">
+                                          {agendaLabSubBadge}
+                                        </span>
+                                      )}
+                                    </div>
+                                  </div>
+
+                                  {/* Line 2: Single Compact Meta Row: Time • Room • Faculty/Section */}
+                                  <div className="flex items-center gap-2 text-xs font-mono">
+                                    <div className="flex items-center gap-1 shrink-0 font-medium opacity-95">
+                                      <Clock className="h-3 w-3 opacity-75" />
+                                      <span>
+                                        {formatTime12(classItem.startTime)} – {formatTime12(classItem.endTime)}
+                                      </span>
+                                    </div>
+                                    <span className="opacity-40">•</span>
+                                    <div className="flex items-center gap-1 shrink-0 opacity-90">
+                                      <MapPin className="h-3 w-3 opacity-75" />
+                                      {(() => {
+                                        const { prefix: roomPrefix, number: roomNumber } = parseRoomParts(classItem.room);
+                                        return (
+                                          <span className="font-ui font-normal">
+                                            {roomPrefix && <span className="opacity-75">{roomPrefix} </span>}
+                                            <span>{roomNumber}</span>
+                                          </span>
+                                        );
+                                      })()}
+                                    </div>
+                                    <span className="opacity-40">•</span>
+                                    {isFaculty ? (
+                                      (() => {
+                                        const sectionBadge = classItem.sectionId && classItem.sectionId !== 'Common'
+                                          ? (classItem.subSection && !classItem.sectionId.endsWith(classItem.subSection) ? `${classItem.sectionId}${classItem.subSection}` : classItem.sectionId)
+                                          : (classItem.batch && classItem.section ? `${classItem.batch}_${classItem.section}` : (classItem.batch && classItem.batch !== 'Batch' ? classItem.batch : null));
+
+                                        const sectionTargetId = classItem.sectionId && classItem.sectionId !== 'Common'
+                                          ? classItem.sectionId
+                                          : (classItem.batch && classItem.section ? `${classItem.batch}_${classItem.section}` : classItem.batch?.replace(/([A-Za-z]+)[12]$/, '$1'));
+
+                                        if (!sectionBadge) return null;
+
+                                        return (
+                                          <button
+                                            type="button"
+                                            onClick={(e) => {
+                                              e.stopPropagation();
+                                              if (sectionTargetId) onOpenSectionInfo?.(sectionTargetId);
+                                            }}
+                                            title={`Click to view info for ${sectionBadge}`}
+                                            className="opacity-90 hover:opacity-100 font-ui font-medium shrink-0 hover:underline hover:text-emerald-600 dark:hover:text-emerald-400 transition-colors cursor-pointer"
+                                          >
+                                            {sectionBadge}
+                                          </button>
+                                        );
+                                      })()
+                                    ) : (
+                                      <button
+                                        type="button"
+                                        onClick={(e) => {
+                                          e.stopPropagation();
+                                          const rect = e.currentTarget.getBoundingClientRect();
+                                          onOpenFacultyInfo?.(classItem.teacherCode, {
+                                            x: Math.round(rect.left + rect.width / 2),
+                                            y: Math.round(rect.top + rect.height / 2),
+                                          });
+                                        }}
+                                        title={`Click to view info for ${classItem.teacherCode}`}
+                                        className="opacity-90 hover:opacity-100 font-ui font-medium shrink-0 hover:underline hover:text-emerald-600 dark:hover:text-emerald-400 transition-colors cursor-pointer"
+                                      >
+                                        {classItem.teacherCode}
+                                      </button>
+                                    )}
+                                  </div>
+                                </>
+                              )}
+                            </div>
+
+                            {/* Standalone Current Time Indicator between classes */}
+                            {showStandaloneAfterThis && (
+                              <div className="flex items-center gap-2.5 py-1.5 pointer-events-none select-none my-0.5">
+                                <div className="flex items-center px-2.5 py-0.5 rounded-full bg-red-500 text-white text-xs font-mono font-bold tracking-tight shrink-0 shadow-xs">
+                                  <span>Now {currentDhakaTime.formatted12}</span>
+                                </div>
+                                <div className="h-[2px] flex-1 bg-red-500 dark:bg-red-500/90 rounded-full shadow-xs" />
+                              </div>
+                            )}
+                          </React.Fragment>
+                        );
+                      })}
+                    </div>
+                  )}
+                </div>
+              </div>
+            );
+          })}
+        </div>
+      </div>
     </section>
   );
 }

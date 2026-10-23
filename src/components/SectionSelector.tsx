@@ -421,6 +421,20 @@ export function SectionSelector({
         </div>
 
         <div className="flex items-center gap-1.5 shrink-0">
+          {/* Header Compare Mode Pill Toggle */}
+          <button
+            type="button"
+            onClick={() => handleToggleComparing()}
+            className={`px-2.5 py-1 rounded-lg text-xs font-mono font-bold transition-all border cursor-pointer ${
+              isComparing
+                ? 'bg-emerald-500 text-emerald-950 border-emerald-400 dark:bg-emerald-500 dark:text-emerald-950 shadow-2xs'
+                : 'bg-slate-100 text-slate-600 hover:text-slate-900 border-slate-200 dark:bg-slate-800 dark:text-slate-400 dark:border-slate-700 dark:hover:text-white'
+            }`}
+            title={isComparing ? 'Switch to primary selection' : 'Enable routine comparison'}
+          >
+            {isComparing ? 'Comparing' : '+ Compare'}
+          </button>
+
           {onClose && (
             <button
               type="button"
