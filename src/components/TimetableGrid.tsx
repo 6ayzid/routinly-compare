@@ -1654,43 +1654,63 @@ export function TimetableGrid({
             </div>
           </div>
 
-          {/* Mobile-only view switcher on Row 1 (Right) */}
+          {/* Mobile Version Filter Selector on Row 1 (Right) */}
           <div className="sm:hidden flex items-center shrink-0">
-            <div className="inline-flex items-center gap-0.5 rounded-xl border border-slate-200 bg-slate-100/90 dark:border-slate-800 dark:bg-slate-950 p-0.5 shadow-2xs">
+            <div
+              role="group"
+              aria-label="Select routine version"
+              className="inline-flex items-center p-0.5 rounded-lg border border-slate-200/90 bg-slate-100/90 dark:border-slate-800 dark:bg-slate-900/90 font-mono text-[10.5px]"
+            >
               <button
                 type="button"
-                onClick={() => setEffectiveViewMode('matrix')}
-                aria-pressed={effectiveViewMode === 'matrix'}
-                className={`flex items-center justify-center gap-1 rounded-lg px-2.5 py-1 text-xs font-semibold transition-colors cursor-pointer min-h-[28px] ${
-                  effectiveViewMode === 'matrix'
-                    ? 'bg-white text-slate-900 shadow-xs border border-slate-200/80 dark:bg-slate-800 dark:text-white dark:border-slate-700 font-bold'
-                    : 'text-slate-600 hover:text-slate-900 dark:text-slate-400 dark:hover:text-white'
+                onClick={() => handleSetVersionView('previous')}
+                aria-pressed={activeVersionView === 'previous'}
+                title="View Previous Routine only (v4.1)"
+                className={`flex items-center gap-1 px-1.5 py-0.5 rounded-md font-bold transition-all cursor-pointer ${
+                  activeVersionView === 'previous'
+                    ? 'bg-emerald-600 text-white shadow-xs'
+                    : 'text-slate-600 dark:text-slate-400'
                 }`}
               >
-                <LayoutGrid className="h-3 w-3 text-emerald-600 dark:text-emerald-400" />
-                <span>Week</span>
+                <span className={`w-1.5 h-1.5 rounded-full shrink-0 ${activeVersionView === 'previous' ? 'bg-white' : 'bg-emerald-500'}`} />
+                <span>Prev</span>
               </button>
 
               <button
                 type="button"
-                onClick={() => setEffectiveViewMode('agenda')}
-                aria-pressed={effectiveViewMode === 'agenda'}
-                className={`flex items-center justify-center gap-1 rounded-lg px-2.5 py-1 text-xs font-semibold transition-colors cursor-pointer min-h-[28px] ${
-                  effectiveViewMode === 'agenda'
-                    ? 'bg-white text-slate-900 shadow-xs border border-slate-200/80 dark:bg-slate-800 dark:text-white dark:border-slate-700 font-bold'
-                    : 'text-slate-600 hover:text-slate-900 dark:text-slate-400 dark:hover:text-white'
+                onClick={() => handleSetVersionView('both')}
+                aria-pressed={activeVersionView === 'both'}
+                title="Compare Both Versions"
+                className={`flex items-center gap-1 px-1.5 py-0.5 rounded-md font-bold transition-all cursor-pointer ${
+                  activeVersionView === 'both'
+                    ? 'bg-white dark:bg-slate-800 text-slate-900 dark:text-white shadow-xs border border-slate-200/90 dark:border-slate-700'
+                    : 'text-slate-600 dark:text-slate-400'
                 }`}
               >
-                <CalendarDays className="h-3 w-3 text-emerald-600 dark:text-emerald-400" />
-                <span>Agenda</span>
+                <span>Both</span>
+              </button>
+
+              <button
+                type="button"
+                onClick={() => handleSetVersionView('new')}
+                aria-pressed={activeVersionView === 'new'}
+                title="View New Routine only (Routinly)"
+                className={`flex items-center gap-1 px-1.5 py-0.5 rounded-md font-bold transition-all cursor-pointer ${
+                  activeVersionView === 'new'
+                    ? 'bg-blue-600 text-white shadow-xs'
+                    : 'text-slate-600 dark:text-slate-400'
+                }`}
+              >
+                <span className={`w-1.5 h-1.5 rounded-full shrink-0 ${activeVersionView === 'new' ? 'bg-white' : 'bg-blue-500'}`} />
+                <span>New</span>
               </button>
             </div>
           </div>
         </div>
 
-        {/* Mobile Row 2 / Desktop Center: Section or Faculty Indicator (Smooth, slow, subtle glide) */}
+        {/* Mobile Row 2 / Desktop Center: Section or Faculty Indicator + Mobile Week/Agenda switcher */}
         <div
-          className={`flex items-center gap-2 flex-wrap min-w-0 transition-all duration-500 ease-out sm:justify-center ${
+          className={`flex items-center justify-between sm:justify-center gap-2 flex-wrap min-w-0 transition-all duration-500 ease-out ${
             effectiveViewMode === 'matrix' ? 'sm:translate-x-1.5' : 'sm:-translate-x-1.5'
           }`}
         >
@@ -1741,15 +1761,73 @@ export function TimetableGrid({
           ) : null}
         </div>
 
-        {/* Desktop-only: View switcher on the right */}
-        <div className="hidden sm:flex items-center justify-end shrink-0 sm:flex-1">
+        {/* Desktop: Routine Version Selector + View Switcher */}
+        <div className="hidden sm:flex items-center justify-end shrink-0 sm:flex-1 gap-2.5">
+          {/* Desktop Version Filter Selector */}
+          <div
+            role="group"
+            aria-label="Select routine version"
+            className="inline-flex items-center p-0.5 rounded-xl border border-slate-200/90 bg-slate-100/80 dark:border-slate-800 dark:bg-slate-900/90 shadow-2xs font-mono text-xs"
+          >
+            {/* Previous Version Button */}
+            <button
+              type="button"
+              onClick={() => handleSetVersionView('previous')}
+              title="View Previous Routine only (Published v4.1)"
+              aria-pressed={activeVersionView === 'previous'}
+              className={`flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-[11px] font-bold transition-all cursor-pointer ${
+                activeVersionView === 'previous'
+                  ? 'bg-emerald-600 text-white shadow-xs'
+                  : 'text-slate-600 dark:text-slate-400 hover:text-emerald-700 dark:hover:text-emerald-300'
+              }`}
+            >
+              <span className={`w-2 h-2 rounded-full shrink-0 ${activeVersionView === 'previous' ? 'bg-white' : 'bg-emerald-500'}`} />
+              <span>Prev (v4.1)</span>
+            </button>
+
+            {/* Both / Compare Button */}
+            <button
+              type="button"
+              onClick={() => handleSetVersionView('both')}
+              title="Compare Both Routine Versions side by side"
+              aria-pressed={activeVersionView === 'both'}
+              className={`flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-[11px] font-bold transition-all cursor-pointer ${
+                activeVersionView === 'both'
+                  ? 'bg-white dark:bg-slate-800 text-slate-900 dark:text-white shadow-xs border border-slate-200/90 dark:border-slate-700'
+                  : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white'
+              }`}
+            >
+              <span className="flex -space-x-1 shrink-0">
+                <span className="w-2 h-2 rounded-full bg-emerald-500 ring-1 ring-white dark:ring-slate-900" />
+                <span className="w-2 h-2 rounded-full bg-blue-500 ring-1 ring-white dark:ring-slate-900" />
+              </span>
+              <span>Both</span>
+            </button>
+
+            {/* New Version Button */}
+            <button
+              type="button"
+              onClick={() => handleSetVersionView('new')}
+              title="View New Routine only (Routinly Optimized)"
+              aria-pressed={activeVersionView === 'new'}
+              className={`flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-[11px] font-bold transition-all cursor-pointer ${
+                activeVersionView === 'new'
+                  ? 'bg-blue-600 text-white shadow-xs'
+                  : 'text-slate-600 dark:text-slate-400 hover:text-blue-700 dark:hover:text-blue-300'
+              }`}
+            >
+              <span className={`w-2 h-2 rounded-full shrink-0 ${activeVersionView === 'new' ? 'bg-white' : 'bg-blue-500'}`} />
+              <span>New (Routinly)</span>
+            </button>
+          </div>
+
+          {/* View switcher */}
           <div className="inline-flex items-center gap-0.5 rounded-xl border border-slate-200 bg-slate-100/90 dark:border-slate-800 dark:bg-slate-950 p-0.5 shadow-2xs">
-            {/* Week View */}
             <button
               type="button"
               onClick={() => setEffectiveViewMode('matrix')}
               aria-pressed={effectiveViewMode === 'matrix'}
-              className={`flex items-center justify-center gap-1.5 rounded-lg px-3 py-1.5 text-xs font-semibold transition-colors cursor-pointer min-h-[32px] ${
+              className={`flex items-center justify-center gap-1.5 rounded-lg px-2.5 py-1 text-xs font-semibold transition-colors cursor-pointer min-h-[30px] ${
                 effectiveViewMode === 'matrix'
                   ? 'bg-white text-slate-900 shadow-xs border border-slate-200/80 dark:bg-slate-800 dark:text-white dark:border-slate-700 font-bold'
                   : 'text-slate-600 hover:text-slate-900 dark:text-slate-400 dark:hover:text-white'
@@ -1759,12 +1837,11 @@ export function TimetableGrid({
               <span>Week</span>
             </button>
 
-            {/* Agenda View */}
             <button
               type="button"
               onClick={() => setEffectiveViewMode('agenda')}
               aria-pressed={effectiveViewMode === 'agenda'}
-              className={`flex items-center justify-center gap-1.5 rounded-lg px-3 py-1.5 text-xs font-semibold transition-colors cursor-pointer min-h-[32px] ${
+              className={`flex items-center justify-center gap-1.5 rounded-lg px-2.5 py-1 text-xs font-semibold transition-colors cursor-pointer min-h-[30px] ${
                 effectiveViewMode === 'agenda'
                   ? 'bg-white text-slate-900 shadow-xs border border-slate-200/80 dark:bg-slate-800 dark:text-white dark:border-slate-700 font-bold'
                   : 'text-slate-600 hover:text-slate-900 dark:text-slate-400 dark:hover:text-white'
