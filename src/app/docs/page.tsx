@@ -4,67 +4,71 @@ import { ArrowLeft, ArrowUpRight, Check, Minus } from 'lucide-react';
 import { Metadata } from 'next';
 
 export const metadata: Metadata = {
-  title: 'Routinly vs. Official V5.1 | Schedule Architecture Report',
+  title: 'Routinly vs. Official V5.1 | Schedule Verification Report',
   description:
-    'A verified comparison between the Department of CSE Official Routine V5.1 (8 Nov 2026) and the Routinly CP-SAT solver.',
+    'A verified constraint-by-constraint comparison between the Department of CSE Official Routine V5.1 (8 Nov 2026) and the Routinly CP-SAT solver.',
 };
 
 const HEADLINE_METRICS = [
   {
     value: '0',
-    label: 'Student Idle Gaps',
-    baseline: '297 slot-units in V5.1',
-    detail: 'Every section’s daily classes are packed into contiguous blocks.',
+    label: 'Hard Constraint Violations',
+    baseline: '93 errors in Official V5.1',
+    detail: 'All 15 hard checks pass cleanly in verify_schedule.py across 1,637 scheduled events.',
   },
   {
     value: '0',
-    label: 'Cross-Campus Sprints',
-    baseline: '80 violations in V5.1',
-    detail: '1-slot transit buffer enforced between KT and ANX1.',
+    label: 'Student Overload Days',
+    baseline: '33 overload days in V5.1 (6 six-slot days)',
+    detail: 'Every section is capped at 4 classes per day. Zero 7.5-hour or 9-hour marathons.',
   },
   {
-    value: '0',
-    label: 'Faculty Off-Day Violations',
-    baseline: '27 violations in V5.1',
-    detail: 'Every requested faculty off-day is respected.',
+    value: '90.1%',
+    label: 'Sections on ≤ 4-Day Weeks',
+    baseline: '78.4% (127 / 162) in Official V5.1',
+    detail: '146 of 162 active sections attend on 4 days or fewer, reducing weekly commutes.',
   },
   {
-    value: '0',
-    label: 'Room Capacity Mismatches',
-    baseline: '152 violations in V5.1',
-    detail: 'Every theory and lab group fits its assigned room.',
+    value: '-28.4%',
+    label: 'Regular Teacher Idle Gaps',
+    baseline: '429 regular (505 all) units in V5.1',
+    detail: 'Drops to 307 regular (391 all) gap units while honoring 100% of regular off-days.',
   },
   {
-    value: '8',
-    label: 'Teacher Idle Gaps',
-    baseline: '505 slot-units in V5.1',
-    detail: '98.4% reduction in faculty waiting time between classes.',
-  },
-  {
-    value: '0',
+    value: '-58.3%',
     label: '3+ Floor Jumps (KT)',
-    baseline: '78 jumps in V5.1',
-    detail: 'Consecutive classes are clustered on adjacent floors.',
+    baseline: '175 jumps (1.42 avg) in V5.1',
+    detail: 'Reduced to 73 jumps (0.57 avg), with 662 same-floor back-to-back transitions.',
+  },
+  {
+    value: '0',
+    label: '6-Day Faculty Schedules',
+    baseline: '1 teacher on all 6 days in V5.1',
+    detail: 'Every faculty member gets at least one full day off, with Sat+Thu splits cut 22 → 8.',
   },
 ];
 
 const COMPARISON_ROWS = [
-  { metric: 'Room Double-Bookings', v51: '0', routinly: '0', status: 'pass' },
-  { metric: 'Teacher Double-Bookings', v51: '0', routinly: '0', status: 'pass' },
-  { metric: 'Section / Group Overlaps', v51: '0', routinly: '0', status: 'pass' },
-  { metric: 'Theory in Basement Labs (G1-001..022 / CTBA-01)', v51: '0', routinly: '0', status: 'pass' },
-  { metric: 'Unmerged Retakes Scheduled', v51: '184 / 184', routinly: '184 / 184', status: 'pass' },
-  { metric: 'KT ↔ ANX1 Transit Buffer Violations', v51: '80', routinly: '0', status: 'improved' },
-  { metric: 'Teacher Explicit Off-Day Violations', v51: '27', routinly: '0', status: 'improved' },
-  { metric: 'Room Capacity vs. Group Size Violations', v51: '152', routinly: '0', status: 'improved' },
-  { metric: 'Same Course Twice in One Day', v51: '301', routinly: '0', status: 'improved' },
-  { metric: 'ANX1 Exclusivity Violations', v51: '7', routinly: '0', status: 'improved' },
-  { metric: 'CSE112 Meeting Rule Violations', v51: '17', routinly: '0', status: 'improved' },
-  { metric: 'Student Idle Gap Units', v51: '297', routinly: '0', status: 'improved' },
-  { metric: 'Teacher Idle Gap Units', v51: '505', routinly: '8', status: 'improved' },
-  { metric: 'Teachers Active Both Sat & Thu', v51: '22 / 195', routinly: '0 / 195', status: 'improved' },
-  { metric: 'Teachers With No Day Off (6 Days)', v51: '1 / 195', routinly: '0 / 195', status: 'improved' },
-  { metric: 'KT Consecutive 3+ Floor Jumps', v51: '78', routinly: '0', status: 'improved' },
+  { metric: 'Scheduled Events', v51: '1,629', routinly: '1,637', status: 'neutral' },
+  { metric: 'Room Double-Bookings', v51: '0', routinly: '0', status: 'neutral' },
+  { metric: 'Teacher Double-Bookings', v51: '0', routinly: '0', status: 'neutral' },
+  { metric: 'Section / Group Overlaps', v51: '0', routinly: '0', status: 'neutral' },
+  { metric: 'KT ↔ ANX1 Transit Violations (verify_schedule)', v51: '82', routinly: '0', status: 'improved' },
+  { metric: 'Teacher Explicit Off-Day Violations', v51: '22', routinly: '0', status: 'improved' },
+  { metric: 'ANX1 Exclusivity Violations', v51: '6', routinly: '0', status: 'improved' },
+  { metric: 'Theory in Basement Labs (G1-001..022 / CTBA-01)', v51: '4', routinly: '0', status: 'improved' },
+  { metric: 'CSE112 Meeting Rule Violations', v51: '4', routinly: '0', status: 'improved' },
+  { metric: 'Room Capacity vs. Group Size Violations', v51: '3', routinly: '0', status: 'improved' },
+  { metric: 'Same Course Twice in One Day', v51: '2', routinly: '0', status: 'improved' },
+  { metric: 'Required Weekly Meetings Mismatches', v51: '8', routinly: '0', status: 'improved' },
+  { metric: 'Cohort Student Gap Units (C1 + C2, metrics.py)', v51: '651', routinly: '618', status: 'improved' },
+  { metric: 'Parent Union Student Gaps (metrics.py)', v51: '375', routinly: '322', status: 'improved' },
+  { metric: 'Teacher Idle Gap Units (All / Regular)', v51: '505 / 429', routinly: '391 / 307', status: 'improved' },
+  { metric: 'Sections Attending ≤ 4 Days / Week', v51: '127 / 162', routinly: '146 / 162', status: 'improved' },
+  { metric: 'Section-Days ≥ 5 Slots (6-Slot Days)', v51: '33 (6)', routinly: '0 (0)', status: 'improved' },
+  { metric: 'Teachers Active Both Sat & Thu', v51: '22 / 195', routinly: '8 / 194', status: 'improved' },
+  { metric: 'Teachers With No Day Off (6 Days)', v51: '1 / 195', routinly: '0 / 194', status: 'improved' },
+  { metric: 'KT 3+ Floor Jumps (metrics.py)', v51: '175 (1.42 avg)', routinly: '73 (0.57 avg)', status: 'improved' },
 ];
 
 export default function DocsPage() {
@@ -81,7 +85,7 @@ export default function DocsPage() {
             <span>Timetable</span>
           </Link>
           <span className="text-xs font-medium tracking-wide text-zinc-500 dark:text-zinc-400">
-            Fall 2026 · CSE Department
+            Fall 2026 · Dept. of CSE
           </span>
         </div>
       </header>
@@ -93,20 +97,20 @@ export default function DocsPage() {
             Schedule Verification Report
           </p>
           <h1 className="mt-4 text-4xl font-semibold tracking-tight text-zinc-950 dark:text-white sm:text-6xl sm:leading-[1.05]">
-            Zero hard conflicts.
+            Zero hard errors.
             <br />
-            Zero student gaps.
+            Zero overload days.
           </h1>
           <p className="mt-6 text-lg leading-relaxed text-zinc-600 dark:text-zinc-400">
-            An independent, constraint-by-constraint audit comparing the published{' '}
+            An independent, constraint-by-constraint evaluation comparing the{' '}
             <span className="font-medium text-zinc-950 dark:text-zinc-200">
               Official Routine V5.1
             </span>{' '}
-            (effective 8 November 2026) against the latest{' '}
+            (8 November 2026, 1,629 events) against the{' '}
             <span className="font-medium text-zinc-950 dark:text-zinc-200">
-              Routinly
+              Routinly v1.5
             </span>{' '}
-            CP-SAT schedule.
+            CP-SAT schedule (seed 2026, 1,637 events).
           </p>
 
           <div className="mt-8 flex flex-wrap items-center gap-4">
@@ -118,7 +122,8 @@ export default function DocsPage() {
               <ArrowUpRight className="h-4 w-4" />
             </Link>
             <span className="text-sm text-zinc-500 dark:text-zinc-400">
-              Verified with <code className="font-mono text-xs">verify_schedule.py</code>
+              Audited by <code className="font-mono text-xs">verify_schedule.py</code> &amp;{' '}
+              <code className="font-mono text-xs">metrics.py</code>
             </span>
           </div>
         </section>
@@ -155,14 +160,14 @@ export default function DocsPage() {
           <div className="mb-8 flex flex-col justify-between gap-2 sm:flex-row sm:items-end">
             <div>
               <h2 className="text-2xl font-semibold tracking-tight text-zinc-950 dark:text-white">
-                Constraint Audit
+                Constraint &amp; Quality Audit
               </h2>
               <p className="mt-1 text-sm text-zinc-500 dark:text-zinc-400">
-                Direct evaluation against the Fall 2026 departmental specification.
+                Measured identically against the Fall 2026 departmental specification.
               </p>
             </div>
             <span className="text-xs text-zinc-400 dark:text-zinc-500">
-              Lower is better for all violation and gap metrics
+              0 violations required on all hard constraints
             </span>
           </div>
 
@@ -177,7 +182,7 @@ export default function DocsPage() {
                     Official V5.1
                   </th>
                   <th className="px-6 py-4 text-right font-medium text-zinc-950 dark:text-white">
-                    Routinly
+                    Routinly v1.5
                   </th>
                 </tr>
               </thead>
@@ -215,27 +220,27 @@ export default function DocsPage() {
           <div className="grid grid-cols-1 gap-10 sm:grid-cols-2">
             <div>
               <h3 className="text-base font-semibold text-zinc-950 dark:text-white">
-                How Routinly Solves It
+                Two-Phase Optimization
               </h3>
               <p className="mt-3 text-sm leading-relaxed text-zinc-600 dark:text-zinc-400">
-                Instead of placing courses greedily one by one, Routinly compiles
-                the entire department’s rooms, faculty availability, retake
-                merges, and campus transit rules into a two-stage CP-SAT
-                optimization model—guaranteeing hard-constraint feasibility
-                before minimizing student and faculty idle gaps.
+                Instead of placing courses greedily, Routinly compiles rooms,
+                faculty off-days, retake merges, cohort lab splits, and KT ↔ ANX1
+                transit buffers into a two-phase CP-SAT model—proving global
+                feasibility across all 1,637 classes before minimizing student gaps,
+                teacher idle time, and elevator transitions.
               </p>
             </div>
             <div>
               <h3 className="text-base font-semibold text-zinc-950 dark:text-white">
-                Room Classification Note
+                Room Classification
               </h3>
               <p className="mt-3 text-sm leading-relaxed text-zinc-600 dark:text-zinc-400">
                 Basement rooms <code className="font-mono text-xs">G1-026</code>{' '}
-                and <code className="font-mono text-xs">G1-027</code> are
-                classified as theory rooms, while{' '}
+                and <code className="font-mono text-xs">G1-027</code> are modeled
+                as basement theory classrooms, while{' '}
                 <code className="font-mono text-xs">G1-001..022</code> and{' '}
                 <code className="font-mono text-xs">CTBA-01</code> remain
-                strictly reserved for lab sessions.
+                strictly reserved for laboratory sessions.
               </p>
             </div>
           </div>

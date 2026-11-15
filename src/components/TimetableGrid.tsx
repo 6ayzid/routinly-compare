@@ -135,7 +135,9 @@ export function TimetableGrid({
   const setEffectiveViewMode = onViewModeChange || setInternalViewMode;
 
   const cleanVersion = (() => {
-    const match = (routineVersion || '').match(/\bv?([0-9]+(?:\.[0-9]+)?)\b/i);
+    const match =
+      (routineVersion || '').match(/\bv([0-9]+(?:\.[0-9]+)?)\b/i) ||
+      (routineVersion || '').match(/\b([0-9]+\.[0-9]+)\b/);
     return match ? `v${match[1]}` : (routineVersion || 'v5.1');
   })();
 
