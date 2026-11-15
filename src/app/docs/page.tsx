@@ -19,14 +19,14 @@ const HEADLINE_METRICS = [
   {
     value: '0',
     label: 'Student Overload Days',
-    baseline: '6 cohort-days ≥ 5 slots in V5.1',
-    detail: 'No individual student cohort attends more than 4 slots (6 hours) in a single day.',
+    baseline: '6 subsection-days ≥ 5 slots in V5.1',
+    detail: 'No individual subsection (e.g. 66_O1, 66_O2) attends more than 4 slots (6 hours) in a single day.',
   },
   {
     value: '100%',
-    label: 'Cohorts on ≤ 4-Day Weeks',
+    label: 'Subsections on ≤ 4-Day Weeks',
     baseline: '80.2% (219 / 273) in Official V5.1',
-    detail: 'All 275 lab-group cohorts attend ≤ 4 days/week (54 cohorts attend 5 days in V5.1).',
+    detail: 'All 275 subsections attend ≤ 4 days/week (54 subsections attend 5 days in V5.1).',
   },
   {
     value: '-28.4%',
@@ -61,12 +61,12 @@ const COMPARISON_ROWS = [
   { metric: 'Room Capacity vs. Group Size Violations', v51: '3', routinly: '0', status: 'improved' },
   { metric: 'Same Course Twice in One Day', v51: '2', routinly: '0', status: 'improved' },
   { metric: 'Required Weekly Meetings Mismatches', v51: '8', routinly: '0', status: 'improved' },
-  { metric: 'Cohort Student Gap Units (C1 + C2, metrics.py)', v51: '651', routinly: '618', status: 'improved' },
-  { metric: 'Parent Union Student Gaps (metrics.py)', v51: '375', routinly: '322', status: 'improved' },
+  { metric: 'Subsection Student Gap Units (Lab 1 + Lab 2, metrics.py)', v51: '651', routinly: '618', status: 'improved' },
+  { metric: 'Parent Section Union Gaps (metrics.py)', v51: '375', routinly: '322', status: 'improved' },
   { metric: 'Teacher Idle Gap Units (All / Regular)', v51: '505 / 429', routinly: '391 / 307', status: 'improved' },
-  { metric: 'Cohorts Attending ≤ 4 Days / Week (sub1/sub2)', v51: '219 / 273 (80.2%)', routinly: '275 / 275 (100.0%)', status: 'improved' },
-  { metric: 'Cohorts Attending 5 Days / Week (sub1/sub2)', v51: '54', routinly: '0', status: 'improved' },
-  { metric: 'Student Cohort-Days ≥ 5 Slots', v51: '6', routinly: '0', status: 'improved' },
+  { metric: 'Subsections Attending ≤ 4 Days / Week', v51: '219 / 273 (80.2%)', routinly: '275 / 275 (100.0%)', status: 'improved' },
+  { metric: 'Subsections Attending 5 Days / Week', v51: '54', routinly: '0', status: 'improved' },
+  { metric: 'Subsection-Days ≥ 5 Slots', v51: '6', routinly: '0', status: 'improved' },
   { metric: 'Teachers Active Both Sat & Thu', v51: '22 / 195', routinly: '8 / 194', status: 'improved' },
   { metric: 'Teachers With No Day Off (6 Days)', v51: '1 / 195', routinly: '0 / 194', status: 'improved' },
   { metric: 'KT 3+ Floor Jumps (metrics.py)', v51: '175 (1.42 avg)', routinly: '73 (0.57 avg)', status: 'improved' },
@@ -225,7 +225,7 @@ export default function DocsPage() {
               </h3>
               <p className="mt-3 text-sm leading-relaxed text-zinc-600 dark:text-zinc-400">
                 Instead of placing courses greedily, Routinly compiles rooms,
-                faculty off-days, retake merges, cohort lab splits, and KT ↔ ANX1
+                faculty off-days, retake merges, subsection lab splits, and KT ↔ ANX1
                 transit buffers into a two-phase CP-SAT model—proving global
                 feasibility across all 1,637 classes before minimizing student gaps,
                 teacher idle time, and elevator transitions.
