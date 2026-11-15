@@ -160,7 +160,7 @@ export default function Home() {
         // Ignore
       }
     }
-    return 'v4.1';
+    return 'v5.1';
   });
   const [isOfflineCached, setIsOfflineCached] = useState(false);
   const [fetchError, setFetchError] = useState(false);
@@ -683,10 +683,10 @@ export default function Home() {
                   Semester: Fall 2026 • Timezone: Asia/Dhaka (UTC+6) • Routine:{' '}
                   <strong className="font-bold">
                     {versionView === 'both'
-                      ? 'Comparison (v4.1 vs Routinly)'
+                      ? 'Comparison (v5.1 vs Routinly)'
                       : versionView === 'new'
                       ? 'New Routine (Routinly)'
-                      : 'Previous Routine (Published v4.1)'}
+                      : 'Previous Routine (Published v5.1)'}
                   </strong>
                 </div>
               </>
@@ -698,10 +698,10 @@ export default function Home() {
                   Semester: Fall 2026 • Timezone: Asia/Dhaka (UTC+6) • Routine:{' '}
                   <strong className="font-bold">
                     {versionView === 'both'
-                      ? 'Comparison (v4.1 vs Routinly)'
+                      ? 'Comparison (v5.1 vs Routinly)'
                       : versionView === 'new'
                       ? 'New Routine (Routinly)'
-                      : 'Previous Routine (Published v4.1)'}
+                      : 'Previous Routine (Published v5.1)'}
                   </strong>
                 </div>
               </>

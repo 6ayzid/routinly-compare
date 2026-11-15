@@ -130,8 +130,8 @@ export function SectionInfoModal({
     // 2. Check localStorage cache from primary app
     const activeVersion =
       typeof window !== 'undefined'
-        ? localStorage.getItem('diu_synced_routine_version') || 'v4.1'
-        : 'v4.1';
+        ? localStorage.getItem('diu_synced_routine_version') || 'v5.1'
+        : 'v5.1';
     const cacheKey = `diu_cached_routine_${activeVersion}_s_${resolvedSection.id}_sub_all`;
 
     try {

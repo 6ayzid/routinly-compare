@@ -77,7 +77,7 @@ export function TimetableGrid({
   viewMode,
   onViewModeChange,
   onActiveDayChange,
-  routineVersion = 'v4.1',
+  routineVersion = 'v5.1',
   onVersionChange,
   onOpenFacultyInfo,
   onOpenSectionInfo,
@@ -136,7 +136,7 @@ export function TimetableGrid({
 
   const cleanVersion = (() => {
     const match = (routineVersion || '').match(/\bv?([0-9]+(?:\.[0-9]+)?)\b/i);
-    return match ? `v${match[1]}` : (routineVersion || 'v4.1');
+    return match ? `v${match[1]}` : (routineVersion || 'v5.1');
   })();
 
   useEffect(() => {
@@ -1300,7 +1300,7 @@ export function TimetableGrid({
             ? (pe.event.type === 'Lab' ? 'Lab' : 'Exam')
             : isNew
             ? 'New (Routinly)'
-            : 'Prev (v4.1)',
+            : 'Prev (v5.1)',
           isPrimaryTarget: isNew,
           override,
         };
@@ -1658,7 +1658,7 @@ export function TimetableGrid({
                 type="button"
                 onClick={() => handleSetVersionView('previous')}
                 aria-pressed={activeVersionView === 'previous'}
-                title="View Previous Routine only (v4.1)"
+                title="View Previous Routine only (v5.1)"
                 className={`flex items-center gap-1 px-1.5 py-0.5 rounded-md font-bold transition-all cursor-pointer ${
                   activeVersionView === 'previous'
                     ? 'bg-emerald-600 text-white shadow-xs'
@@ -1766,7 +1766,7 @@ export function TimetableGrid({
             <button
               type="button"
               onClick={() => handleSetVersionView('previous')}
-              title="View Previous Routine only (Published v4.1)"
+              title="View Previous Routine only (Published v5.1)"
               aria-pressed={activeVersionView === 'previous'}
               className={`flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-[11px] font-bold transition-all cursor-pointer ${
                 activeVersionView === 'previous'
@@ -1775,7 +1775,7 @@ export function TimetableGrid({
               }`}
             >
               <span className={`w-2 h-2 rounded-full shrink-0 ${activeVersionView === 'previous' ? 'bg-white' : 'bg-emerald-500'}`} />
-              <span>Prev (v4.1)</span>
+              <span>Prev (v5.1)</span>
             </button>
 
             {/* Both / Compare Button */}
@@ -1832,7 +1832,7 @@ export function TimetableGrid({
               <strong>
                 {faculty?.name || activeTarget?.faculty.name} ({activeTarget?.faculty.code})
               </strong>{' '}
-              in routine version <span className="font-mono font-bold text-emerald-700 dark:text-emerald-400">{activeVersionView === 'previous' ? 'v4.1 (Previous)' : activeVersionView === 'new' ? 'Routinly (New)' : cleanVersion}</span>.
+              in routine version <span className="font-mono font-bold text-emerald-700 dark:text-emerald-400">{activeVersionView === 'previous' ? 'v5.1 (Previous)' : activeVersionView === 'new' ? 'Routinly (New)' : cleanVersion}</span>.
             </span>
           </div>
         </div>

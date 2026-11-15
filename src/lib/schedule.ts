@@ -24,7 +24,7 @@ export function getSection(id: string): SectionMeta | undefined {
 /**
  * Retrieves schedule entries for a section with subsection filtering for both:
  * 1. New Routine (Fall 2026 Routinly Optimized)
- * 2. Previous Routine (Fall 2026 Published V4.1)
+ * 2. Previous Routine (Fall 2026 Published v5.1)
  * 
  * @param sectionId e.g. "68_D"
  * @param subSection '1' | '2' | 'all' | null
@@ -49,9 +49,9 @@ export async function getScheduleWithMeta(
     versionType: 'new',
   }));
 
-  // 2. Previous Routine (Fall 2026 Published V4.1): Check project live routine API first
+  // 2. Previous Routine (Fall 2026 Published v5.1): Check project live routine API first
   let enrichedPrev: RoutineClass[] = [];
-  let prevVersion = previousRoutine.version || 'v4.1';
+  let prevVersion = previousRoutine.version || 'v5.1';
 
   try {
     const liveResult = await fetchLiveScheduleFromUpstream(normalizedId);
@@ -85,7 +85,7 @@ export async function getScheduleWithMeta(
     classes: filterBySubSection(enrichedNew, subSection),
     previousClasses: filterBySubSection(enrichedPrev, subSection),
     version: newRoutine.version || 'Routinly (Optimized)',
-    previousVersion: prevVersion || 'Published (v4.1)',
+    previousVersion: prevVersion || 'Published (v5.1)',
   };
 }
 
@@ -170,9 +170,9 @@ export async function getScheduleForFacultyWithMeta(
     }
   }
 
-  // 2. Previous Routine (Fall 2026 Published V4.1): Check project live routine API first
+  // 2. Previous Routine (Fall 2026 Published v5.1): Check project live routine API first
   let prevTeacherClasses: RoutineClass[] = [];
-  let prevVersion = previousRoutine.version || 'v4.1';
+  let prevVersion = previousRoutine.version || 'v5.1';
 
   try {
     const liveResult = await fetchLiveTeacherScheduleFromUpstream(cleanCode);
@@ -219,7 +219,7 @@ export async function getScheduleForFacultyWithMeta(
     classes: deduplicateAndSortClasses(enrichedNew),
     previousClasses: deduplicateAndSortClasses(enrichedPrev),
     version: newRoutine.version || 'Routinly (Optimized)',
-    previousVersion: prevVersion || 'Published (v4.1)',
+    previousVersion: prevVersion || 'Published (v5.1)',
     faculty,
   };
 }

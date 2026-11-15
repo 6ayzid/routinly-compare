@@ -10,7 +10,7 @@ interface VersionBadgeProps {
 }
 
 export function VersionBadge({
-  routineVersion = 'v4.1',
+  routineVersion = 'v5.1',
   onVersionChange,
   className = '',
 }: VersionBadgeProps) {
@@ -28,7 +28,7 @@ export function VersionBadge({
 
   const cleanVersion = (() => {
     const match = (routineVersion || '').match(/\bv?([0-9]+(?:\.[0-9]+)?)\b/i);
-    return match ? `v${match[1]}` : routineVersion || 'v4.1';
+    return match ? `v${match[1]}` : routineVersion || 'v5.1';
   })();
 
   // Close when clicking outside
